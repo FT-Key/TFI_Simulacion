@@ -1,0 +1,272 @@
+================================================================================
+  EMA S.R.L. — SIMULADOR DE PLANTA DE RECICLAJE WEEE
+  Descripción técnica del Backend (Spring Boot / Java 21)
+================================================================================
+
+PARA CONECTAR EL FRONTEND AL BACKEND
+--------------------------------------
+Cambiar una sola línea en:
+  Frontend/src/services/transport/index.ts
+
+  // Cambiar:
+  return new MockSimulationTransport()
+  // Por:
+  return new BackendSimulationTransport()
+
+El backend debe estar corriendo en http://localhost:8080
+
+
+================================================================================
+1. QUÉ ES Y PARA QUÉ SIRVE
+================================================================================
+
+Es una API que simula la operación diaria de una planta de reciclaje de
+aparatos eléctricos y electrónicos (WEEE), específicamente impresoras y
+escáneres. Modela el flujo de dispositivos desde su llegada hasta la
+recuperación de materiales, usando generadores de números pseudoaleatorios
+para reproducir el comportamiento estocástico real de la planta.
+
+La simulación corre en tiempo discreto: cada "tick" avanza el reloj simulado
+una hora, un día o una semana, según la granularidad elegida por el usuario.
+El resultado de cada tick se transmite al frontend en tiempo real via SSE.
+
+
+================================================================================
+2. ESTRUCTURA DE PAQUETES
+================================================================================
+
+com.example.backend/
+├── config/
+│   ├── WebSocketConfig.java       Configuración STOMP (reservado para futuro)
+│   └── CorsConfig.java            Permite peticiones desde localhost:5173/4173
+│
+├── controller/
+│   └── SimulationController.java  Endpoints REST + SSE
+│
+├── model/
+│   ├── LcgGenerator.java          Motor PRNG (Generador Congruencial Mixto)
+│   ├── Device.java                Entidad: una impresora/escáner en el sistema
+│   ├── DeviceType.java            Enum: INKJET / LASER / INDUSTRIAL
+│   ├── DeviceOutcome.java         Enum: REFURBISHED / TERMINAL_WASTE / DISASSEMBLY
+│   ├── StationState.java          Estado de una estación de trabajo en runtime
+│   ├── SimulationState.java       Estado completo de una corrida activa
+│   └── dto/                       Objetos de transferencia (coinciden con tipos TS)
+│       ├── SimulationConfigDto    Parámetros recibidos del frontend
+│       ├── PlantSnapshotDto       Estado del galpón enviado por SSE cada tick
+│       ├── StationSnapshotDto     Estado de una estación (para el frontend)
+│       ├── KpiSnapshotDto         Porcentajes de recuperación / descarte
+│       ├── WeeklyPerformancePointDto  Punto del gráfico de serie temporal
+│       ├── ComparisonPointDto     Punto del gráfico de comparación de materiales
+│       └── StartRunResponse       Respuesta al iniciar una corrida {runId}
+│
+└── service/
+    ├── RandomGeneratorService.java  Wrapper @Service del LCG + pruebas estadísticas
+    ├── SimulationEngine.java        Motor de simulación (lógica de negocio)
+    └── SimulationService.java       Gestión de corridas + broadcasting SSE
+
+
+================================================================================
+3. API REST
+================================================================================
+
+Base URL: http://localhost:8080
+
+  POST  /api/simulations/runs
+        Body: SimulationConfig (JSON)
+        Respuesta: { "runId": "uuid" }
+        Inicia una nueva corrida. El runId se usa para el stream SSE.
+
+  POST  /api/simulations/runs/{runId}/stop
+        Detiene la corrida y libera recursos.
+
+  GET   /api/simulations/runs/{runId}/summary
+        Retorna el último PlantSnapshot disponible (REST, sin streaming).
+
+  GET   /api/simulations/runs/{runId}/stream   [text/event-stream]
+        Stream SSE: emite un PlantSnapshot JSON por cada tick simulado.
+        El frontend conecta con: new EventSource(url)
+
+
+================================================================================
+4. PARÁMETROS DE CONFIGURACIÓN (SimulationConfig)
+================================================================================
+
+  activeStations         int    Número de estaciones de desensamblaje en paralelo (1-4)
+  operatorsPerStation    int    Operarios por estación (1-8)
+  monthlyDeviceVolume    int    Dispositivos que ingresan por mes (200-7000)
+  tickMs                 int    Milisegundos reales entre cada tick simulado
+  granularity            string "daily" | "weekly" | "monthly"
+  simulationDurationYears int   1 o 2 años simulados como horizonte de la corrida
+
+
+================================================================================
+5. GRANULARIDAD DE LA SIMULACIÓN
+================================================================================
+
+  DAILY (diaria):
+    - 1 tick = 1 hora de trabajo
+    - Llegadas por tick = monthlyDeviceVolume / 160  (4 sem × 5 días × 8 h)
+    - Capacidad por tick = operarios × 60 minutos disponibles
+    - Labels en gráfico: H1, H2, H3...
+    - 1 año = 2.080 ticks  (260 días hábiles × 8 horas)
+    - tickMs default = 360.000 ms  →  1 hora simulada = 6 minutos reales
+    - Permite ver en detalle: triaje, desensamblaje y recuperación hora por hora
+
+  WEEKLY (semanal):
+    - 1 tick = 1 día hábil
+    - Llegadas por tick = monthlyDeviceVolume / 20  (4 sem × 5 días)
+    - Capacidad por tick = operarios × 480 minutos disponibles
+    - Labels en gráfico: D1, D2, D3...
+    - 1 año = 260 ticks
+    - tickMs default = 1.000 ms  →  1 año simulado en ~4 minutos reales
+
+  MONTHLY (mensual):
+    - 1 tick = 1 semana
+    - Llegadas por tick = monthlyDeviceVolume / 4
+    - Capacidad por tick = operarios × 2.400 minutos disponibles
+    - Labels en gráfico: S1, S2, S3...
+    - 1 año = 52 ticks
+    - tickMs default = 700 ms  →  1 año simulado en ~36 segundos reales
+
+
+================================================================================
+6. MOTOR MATEMÁTICO — LcgGenerator (basado en Generadores.java original)
+================================================================================
+
+Algoritmo: Generador Congruencial Mixto (LCG)
+  Xn+1 = (a × Xn + c) mod m
+  Parámetros ANSI C (Knuth): a=1664525, c=1013904223, m=2^32
+
+Métodos disponibles:
+  next()                      → double en [0, 1)
+  nextUniform(min, max)       → double uniforme en [min, max]
+  nextInt(min, max)           → int uniforme en [min, max]
+  nextNormal(mean, stdDev)    → double normal via transformación Box-Muller
+
+Cada corrida tiene su propia instancia del generador (semilla = System.currentTimeMillis())
+→ los resultados son reproducibles si se fija la semilla, y distintos entre corridas.
+
+RandomGeneratorService (@Service) expone además:
+  pruebaPromedio(numeros, zCritico)           → boolean (no rechaza H0)
+  pruebaKolmogorovSmirnov(numeros, daCritico) → boolean (no rechaza H0)
+  generateUniformSamples(seed, cantidad)      → List<Double>
+
+
+================================================================================
+7. LÓGICA DE NEGOCIO — FLUJO DE CADA DISPOSITIVO
+================================================================================
+
+PASO 1 — LLEGADA
+  Los dispositivos ingresan según una tasa estocástica calculada como:
+    baseArrivals = monthlyDeviceVolume / divisorGranularidad
+  En meses pico (dic, ene, jun, jul): factor multiplicador U[1.40, 1.60]
+  Esto simula los picos de renovación tecnológica corporativa.
+
+PASO 2 — TRIAJE (clasificación inicial)
+  Cada dispositivo se evalúa con dos variables aleatorias:
+    condición     ← U[0,1] < 0.50  →  buen estado o fallas menores
+    antigüedad    ← U[0,1] < 0.40  →  menos de 7 años de uso
+
+  Regla de negocio:
+    IF condición_ok AND antigüedad_ok  →  REFURBISHED (sale del sistema)
+    ELSE IF U[0,1] < 0.30             →  TERMINAL_WASTE (disposición final)
+    ELSE                              →  DISASSEMBLY (entra a la cola)
+
+  Proporciones resultantes:
+    ~20% REFURBISHED     (reacondicionado y revendido)
+    ~24% TERMINAL_WASTE  (destrucción total / componentes peligrosos)
+    ~56% DISASSEMBLY     (chasis inoperable pero módulos reutilizables)
+
+PASO 3 — COLA DE DESENSAMBLAJE
+  Los dispositivos en estado DISASSEMBLY se encolan (FIFO).
+  Cada estación activa consume dispositivos de la cola en orden.
+  Si la cola supera 3× el arribo esperado por período → SUSPENSIÓN.
+
+PASO 4 — DESENSAMBLAJE EN ESTACIONES
+  Cada estación tiene (operatorsPerStation) operarios.
+  Capacidad disponible por tick = operarios × minutosPorTick
+
+  Tiempo de procesamiento por tipo:
+    INKJET     (30% del flujo)  peso U[4,6] kg    tiempo U[39,59] min
+    LASER      (50% del flujo)  peso U[12,18] kg  tiempo N(55, 4.5) min
+    INDUSTRIAL (20% del flujo)  peso U[45,70] kg  tiempo U[60,83] min
+  → Media global: 55 min (validado contra datos reales de líneas WEEE)
+
+PASO 5 — RECUPERACIÓN DE MATERIALES
+  Por cada dispositivo procesado se calculan los kg recuperados:
+    Plásticos (ABS/HIPS)  U[40, 50]% del peso  →  $0.20 USD/kg
+    Ferrosos (chasis)     U[25, 30]% del peso  →  $0.15 USD/kg
+    Metales preciosos     U[5,  10]% del peso  →  $8.00 USD/kg
+    Aluminio              2% fijo del peso     →  $1.80 USD/kg
+    Cobre (cables/bobinas) 2% fijo del peso   →  $7.00 USD/kg
+    Residuos peligrosos   5% fijo del peso    → -$0.50 USD/kg (costo)
+
+  El valor neto acumulado se reporta como totalRecoveredValueUsd.
+
+PASO 6 — SUSPENSIÓN DE RECEPCIÓN
+  Si la cola supera el umbral (3 × arribo por período):
+    - Se activa una ventana de suspensión de 1 semana.
+    - En modo daily:   40 ticks de suspensión (5 días × 8 horas)
+    - En modo weekly:  5 ticks
+    - En modo monthly: 1 tick
+  Durante la suspensión no ingresan nuevos dispositivos.
+  Las estaciones siguen procesando la cola existente.
+
+PASO 7 — TERMINACIÓN
+  La corrida se detiene automáticamente cuando el tick alcanza:
+    1 año:  daily=2080, weekly=260, monthly=52
+    2 años: daily=4160, weekly=520, monthly=104
+  El último snapshot lleva isCompleted=true, el frontend se auto-detiene.
+
+
+================================================================================
+8. SNAPSHOT (PlantSnapshotDto) — lo que recibe el frontend en cada tick
+================================================================================
+
+  tick                    Número de tick absoluto
+  simulatedDay            Días simulados transcurridos
+  simulatedWeek           Semanas simuladas transcurridas
+  simulatedHour           Hora dentro del día (0-7, solo en modo daily)
+  simulatedMonth          Meses simulados transcurridos
+  granularity             Modo activo: "daily" | "weekly" | "monthly"
+  isCompleted             true cuando la corrida llegó a su horizonte
+  queueDevices            Dispositivos esperando en la cola en este momento
+  incomingDevicesPerWeek  Llegadas en este tick (nombre histórico del campo)
+  processedDevicesPerWeek Dispositivos procesados en este tick
+  stations[]              Estado de cada estación (operarios ocupados, total procesados)
+  kpis{}                  recoveredPct / refurbishedPct / discardedPct (acumulados)
+  weeklySeries[]          Histórico de últimos N ticks para el gráfico de línea
+  comparisonSeries[]      kg recuperados por categoría de material (vs baseline=0)
+  totalRecoveredValueUsd  Valor económico neto acumulado de materiales recuperados
+
+
+================================================================================
+9. KPIs — cómo se calculan
+================================================================================
+
+  recoveredPct   = totalDisassembled  / totalArrived × 100
+  refurbishedPct = totalRefurbished   / totalArrived × 100
+  discardedPct   = totalTerminalWaste / totalArrived × 100
+
+  Los tres son acumulativos desde el inicio de la corrida.
+  La suma de los tres es aproximadamente 100%
+  (diferencia por dispositivos aún en cola, no procesados).
+
+
+================================================================================
+10. CONCURRENCIA — corridas simultáneas
+================================================================================
+
+  El ScheduledExecutorService tiene un pool de 10 hilos.
+  Cada corrida activa ocupa 1 hilo.
+  → Hasta 10 corridas simultáneas posibles.
+
+  Cada corrida mantiene:
+    - Su propio SimulationState (aislado)
+    - Su propio LcgGenerator (semilla independiente)
+    - Su propio set de SseEmitter (clientes conectados)
+
+  No hay estado compartido entre corridas.
+
+
+================================================================================

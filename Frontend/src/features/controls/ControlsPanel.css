@@ -1,0 +1,227 @@
+.controls-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 16px;
+  background: #0c1f3d;
+  border-right: 1px solid #1a3260;
+  min-width: 240px;
+  max-width: 260px;
+  overflow-y: auto;
+}
+
+.controls-panel h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #c5d9f9;
+  letter-spacing: 0.03em;
+}
+
+.controls-subtitle {
+  margin: -12px 0 0;
+  font-size: 11px;
+  color: #4a6fa5;
+  line-height: 1.4;
+}
+
+.range-input {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.range-input-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  color: #89a8de;
+}
+
+.range-input-head strong {
+  font-size: 14px;
+  color: #c5d9f9;
+  min-width: 20px;
+  text-align: right;
+}
+
+.range-input input[type='range'] {
+  width: 100%;
+  accent-color: #3aa1ff;
+  cursor: pointer;
+}
+
+.range-input input[type='range']:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.range-hint {
+  font-size: 10px;
+  color: #4a6fa5;
+  line-height: 1.3;
+}
+
+.capacity-preview {
+  background: #0a1a35;
+  border: 1px solid #1a3260;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cap-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #89a8de;
+}
+
+.cap-row strong { color: #c5d9f9; font-weight: 600; }
+.cap-row.muted  { opacity: 0.6; }
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.control-group-label {
+  font-size: 12px;
+  color: #89a8de;
+}
+
+.btn-group { display: flex; gap: 4px; }
+
+.btn-group-item {
+  flex: 1;
+  padding: 6px 4px;
+  background: #0a1a35;
+  border: 1px solid #1a3260;
+  border-radius: 5px;
+  color: #89a8de;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-group-item.active {
+  background: #1b3d7a;
+  border-color: #3aa1ff;
+  color: #c5d9f9;
+}
+
+.btn-group-item:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.controls-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.controls-actions button {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 5px;
+  background: #1b3d7a;
+  color: #c5d9f9;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.controls-actions button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.controls-actions button.secondary {
+  background: #0a1a35;
+  border: 1px solid #1a3260;
+  color: #89a8de;
+}
+
+.run-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-day-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.run-day-label { font-size: 12px; color: #c5d9f9; font-weight: 600; }
+
+.run-day-name {
+  font-size: 11px;
+  color: #3aa1ff;
+  background: #3aa1ff18;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.run-day-name.weekend { color: #89a8de; background: #89a8de18; }
+
+.month-badge {
+  font-size: 10px;
+  color: #89a8de;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #1a3260;
+}
+
+.month-badge.peak { color: #f2c744; background: #f2c74420; }
+
+.run-day-bar {
+  width: 100%;
+  height: 4px;
+  background: #1a3260;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.run-day-fill {
+  height: 100%;
+  background: #3aa1ff;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+.suspension-badge {
+  font-size: 11px;
+  color: #e05050;
+  background: #e0505018;
+  border: 1px solid #e0505040;
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.completed-badge {
+  font-size: 11px;
+  color: #2ad46f;
+  background: #2ad46f18;
+  border: 1px solid #2ad46f40;
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.run-actions button {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.run-actions button:disabled { opacity: 0.35; cursor: not-allowed; }
+button.success { background: #2ad46f; color: #021a0a; }
+button.warning { background: #f2c744; color: #1a1000; }

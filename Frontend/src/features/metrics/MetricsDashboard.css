@@ -1,0 +1,362 @@
+.metrics-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ── Cards base ── */
+.metric-card {
+  background: #0c1f3d;
+  border: 1px solid #1a3260;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metric-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.metric-card h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #c5d9f9;
+}
+
+.metric-sub {
+  font-size: 11px;
+  color: #4a6fa5;
+}
+
+.no-data {
+  font-size: 12px;
+  color: #4a6fa5;
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* ── Layout filas ── */
+.metrics-top-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+}
+
+.metrics-mid-row {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Economía ── */
+.economics-card { min-width: 220px; }
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2ad46f;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.econ-section { display: flex; flex-direction: column; gap: 4px; }
+
+.econ-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #4a6fa5;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 2px 0 2px;
+}
+
+.econ-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  gap: 8px;
+}
+
+.econ-label { color: #89a8de; white-space: nowrap; }
+.econ-value { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
+
+.econ-divider {
+  border-top: 1px solid #1a3260;
+  margin: 3px 0;
+}
+
+/* ── Cola ── */
+.queue-card {
+  min-width: 130px;
+  max-width: 150px;
+  align-items: center;
+}
+
+.queue-gauge {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 90px;
+}
+
+.queue-bar-bg {
+  width: 28px;
+  height: 90px;
+  background: #0a1a35;
+  border: 1px solid #1a3260;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.queue-bar-fill {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.5s ease, background 0.3s;
+}
+
+.queue-numbers {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.queue-count { font-size: 24px; font-weight: 700; line-height: 1; }
+.queue-limit { font-size: 11px; color: #4a6fa5; }
+
+.queue-suspended {
+  font-size: 10px;
+  color: #e05050;
+  background: #e0505018;
+  border: 1px solid #e0505040;
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.queue-kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+}
+
+.mini-kpi {
+  display: flex;
+  flex-direction: column;
+  font-size: 10px;
+  color: #4a6fa5;
+  background: #0a1a35;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.mini-kpi strong {
+  font-size: 13px;
+  color: #c5d9f9;
+  margin-top: 1px;
+}
+
+/* ── Estaciones ── */
+.stations-card { min-width: 170px; }
+
+.stations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.station-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 36px 46px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.station-id { color: #89a8de; font-size: 10px; }
+
+.station-bar-bg {
+  height: 6px;
+  background: #0a1a35;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.station-bar-fill {
+  height: 100%;
+  background: #3aa1ff;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.station-pct { color: #c5d9f9; text-align: right; font-size: 10px; }
+.station-count { color: #4a6fa5; font-size: 10px; text-align: right; }
+
+.station-totals {
+  font-size: 11px;
+  color: #89a8de;
+  border-top: 1px solid #1a3260;
+  padding-top: 6px;
+}
+
+.station-totals strong { color: #c5d9f9; }
+
+.material-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #4a6fa5;
+}
+
+.mat-row strong { color: #89a8de; }
+
+/* ── Log de dispositivos ── */
+.device-log-card { overflow: hidden; }
+
+.device-log {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  max-height: 100%;
+}
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-left: 3px solid transparent;
+  border-radius: 0 4px 4px 0;
+  background: #0a1a3580;
+  animation: fadeIn 0.2s ease;
+  flex-wrap: wrap;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.dev-seq    { color: #4a6fa5; min-width: 32px; font-size: 10px; }
+.dev-time   { color: #5a7fc0; min-width: 38px; font-size: 10px; font-variant-numeric: tabular-nums; }
+.dev-phase  { color: #89a8de; min-width: 58px; font-size: 10px; font-weight: 600; }
+.dev-type   { min-width: 90px; }
+.dev-weight { color: #89a8de; min-width: 50px; }
+.dev-proctime { color: #4a6fa5; min-width: 40px; }
+.dev-result {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.dev-revenue {
+  font-weight: 600;
+  margin-left: auto;
+}
+.dev-materials {
+  width: 100%;
+  padding-left: 106px;
+  color: #4a6fa5;
+  font-size: 10px;
+}
+
+/* Horarios de desguace */
+.dev-disasm-times {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 106px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 1px;
+}
+.disasm-start { color: #f2c744; }
+.disasm-arrow { color: #4a6fa5; }
+.disasm-end   { color: #2ad46f; }
+.disasm-dur   { color: #4a6fa5; }
+
+/* Encabezado de día */
+.day-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+  padding: 0 4px;
+}
+.day-header-line {
+  flex: 1;
+  height: 1px;
+  background: #1a3260;
+}
+.day-header-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #3a5a9a;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+/* Contador incremental de desarmados en header de estaciones */
+.stations-today-badge {
+  font-size: 11px;
+  color: #4a6fa5;
+}
+.stations-today-badge strong {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2ad46f;
+  line-height: 1;
+}
+
+/* ── Gráficos ── */
+.chart-card { overflow: hidden; }
+
+.chart-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chart-label {
+  font-size: 10px;
+  color: #4a6fa5;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
