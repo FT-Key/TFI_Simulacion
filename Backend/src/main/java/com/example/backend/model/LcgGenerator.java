@@ -31,8 +31,7 @@ public class LcgGenerator {
     // ── Parámetros de la validación KS ───────────────────────────────────────
     /** Tamaño de la ventana deslizante sobre la que se aplica KS. */
     private static final int    KS_WINDOW_SIZE = 100;
-    /** Mínimo de muestras en la ventana antes de comenzar a testear. */
-    private static final int    KS_MIN_SAMPLES = 20;
+    // KS_MIN_SAMPLES eliminado: warmUp() garantiza ventana llena desde el inicio.
     /** Máximo de intentos si KS falla antes de aceptar de todas formas. */
     private static final int    KS_MAX_RETRIES = 10;
     /** Factor de valor crítico KS para α=0.05: D_crit = 1.36 / √n */
@@ -52,6 +51,20 @@ public class LcgGenerator {
         this.c     = c;
         this.m     = m;
         this.state = seed & (m - 1);
+        warmUp();
+    }
+
+    /**
+     * Pre-carga la ventana KS con KS_WINDOW_SIZE números de calentamiento.
+     * Estos números nunca se usan en la simulación — solo sirven para que
+     * desde la primera llamada real a next() la ventana ya esté llena y
+     * KS aplique sin excepción.
+     */
+    private void warmUp() {
+        for (int i = 0; i < KS_WINDOW_SIZE; i++) {
+            state = (a * state + c) % m;
+            ksWindow.addLast((double) state / m);
+        }
     }
 
     // ── Generación con validación KS ──────────────────────────────────────────
@@ -66,12 +79,12 @@ public class LcgGenerator {
         for (int attempt = 0; attempt < KS_MAX_RETRIES; attempt++) {
             double candidate = rawNext();
 
-            // Agregar a la ventana (quitar el más viejo si está llena)
+            // Agregar a la ventana deslizante (quitar el más viejo si está llena)
             if (ksWindow.size() >= KS_WINDOW_SIZE) ksWindow.pollFirst();
             ksWindow.addLast(candidate);
 
-            // Con menos de KS_MIN_SAMPLES no hay potencia estadística: aceptar siempre
-            if (ksWindow.size() < KS_MIN_SAMPLES || passesKS()) {
+            // La ventana siempre tiene KS_WINDOW_SIZE elementos (garantizado por warmUp)
+            if (passesKS()) {
                 return candidate;
             }
 
