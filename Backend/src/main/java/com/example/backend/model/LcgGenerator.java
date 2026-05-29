@@ -138,11 +138,6 @@ public class LcgGenerator {
         return min + next() * (max - min);
     }
 
-    /** Entero uniforme en [min, max] inclusive. */
-    public int nextInt(int min, int max) {
-        return min + (int)(next() * (max - min + 1));
-    }
-
     /**
      * Normal(mean, stdDev) via transformación Box-Muller.
      * Consume dos llamadas a next() — ambas con validación KS propia.
@@ -155,7 +150,4 @@ public class LcgGenerator {
         return mean + stdDev * z;
     }
 
-    public long getState() {
-        return state;
-    }
 }
