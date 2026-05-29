@@ -10,7 +10,22 @@
 
 1. [Arquitectura general](#1-arquitectura-general)
 2. [Generador de números aleatorios (LCG)](#2-generador-de-números-aleatorios-lcg)
-3. [Escala temporal y reloj](#3-escala-temporal-y-reloj)
+3. [Pruebas estadísticas del generador](#3-pruebas-estadísticas-del-generador)
+4. [Escala temporal y reloj](#4-escala-temporal-y-reloj)
+5. [Feriados nacionales](#5-feriados-nacionales)
+6. [Flujo principal de un tick](#6-flujo-principal-de-un-tick)
+7. [Paso 1 — Llegadas](#7-paso-1--llegadas)
+8. [Paso 2 — Triaje y clasificación](#8-paso-2--triaje-y-clasificación)
+9. [Paso 3 — Control de cola y suspensión](#9-paso-3--control-de-cola-y-suspensión)
+10. [Paso 4 — Desensamblaje multicanal](#10-paso-4--desensamblaje-multicanal)
+11. [Paso 5 — Recuperación de materiales](#11-paso-5--recuperación-de-materiales)
+12. [Paso 6 — Costos laborales](#12-paso-6--costos-laborales)
+13. [Días de suspensión (clausura)](#13-días-de-suspensión-clausura)
+14. [Resumen de distribuciones](#14-resumen-de-distribuciones)
+15. [Flujo del frontend — animación y replay](#15-flujo-del-frontend--animación-y-replay)
+16. [API REST y SSE](#16-api-rest-y-sse)
+17. [Informe final](#17-informe-final)
+18. [Diagrama de flujo narrado](#18-diagrama-de-flujo-narrado)
 4. [Feriados nacionales](#4-feriados-nacionales)
 5. [Flujo principal de un tick](#5-flujo-principal-de-un-tick)
 6. [Paso 1 — Llegadas](#6-paso-1--llegadas)
@@ -98,7 +113,190 @@ resultado = mean + σ·Z
 
 ---
 
-## 3. Escala temporal y reloj
+## 3. Pruebas estadísticas del generador
+
+Para que los números del LCG sean utilizables en simulación deben cumplir dos propiedades
+fundamentales: **uniformidad** (se distribuyen homogéneamente en [0,1)) e **independencia**
+(ningún número puede predecirse a partir de los anteriores). Cada una se verifica con una
+prueba distinta.
+
+> **Hipótesis nula (H₀) en todas las pruebas:** los números provienen de una distribución
+> Uniforme(0,1) independiente e idénticamente distribuida.
+> Si el estadístico cae en la zona de rechazo → el generador falla esa prueba.
+
+---
+
+### 3.1 Prueba de Uniformidad — Chi-cuadrado (χ²)
+
+**¿Qué mide?** Que los números caigan con igual frecuencia en todos los subintervalos de [0,1).
+
+**Procedimiento:**
+1. Generar una muestra de `N` números del LCG.
+2. Dividir [0, 1) en `k` subintervalos iguales de ancho `1/k`.
+3. Contar la frecuencia observada `Oᵢ` en cada subintervalo.
+4. La frecuencia esperada es `Eᵢ = N/k` para todos (por uniformidad).
+5. Calcular el estadístico:
+
+```
+χ² = Σᵢ₌₁ᵏ  (Oᵢ − Eᵢ)²
+              ──────────
+                  Eᵢ
+```
+
+6. Comparar con el valor crítico `χ²(α, k−1)` de la tabla chi-cuadrado con `k−1` grados de libertad y nivel de significación `α` (usualmente 0.05).
+
+**Regla de decisión:**
+- `χ²_calculado ≤ χ²_crítico` → **no se rechaza H₀** (el generador pasa la prueba)
+- `χ²_calculado > χ²_crítico` → se rechaza H₀ (problema de uniformidad)
+
+**Valores de referencia comunes** (α = 0.05):
+
+| k subintervalos | gl (k−1) | χ²_crítico |
+|-----------------|----------|------------|
+| 10 | 9 | 16.92 |
+| 20 | 19 | 30.14 |
+| 100 | 99 | 123.23 |
+
+**Recomendación:** usar `N ≥ 5k` para que cada `Eᵢ ≥ 5` (condición de validez de la aproximación chi-cuadrado). Para `k = 10` → `N ≥ 50`; para `k = 100` → `N ≥ 500`.
+
+---
+
+### 3.2 Prueba de Uniformidad — Kolmogorov-Smirnov (K-S)
+
+**¿Qué mide?** Lo mismo que χ² pero comparando directamente la función de distribución
+empírica con la teórica. Es más potente que χ² para muestras pequeñas y no requiere
+agrupar en intervalos.
+
+**Procedimiento:**
+1. Generar `N` números y **ordenarlos** de menor a mayor: `x₍₁₎ ≤ x₍₂₎ ≤ … ≤ x₍ₙ₎`.
+2. Construir la función de distribución empírica:
+
+```
+Fₙ(x₍ᵢ₎) = i / N
+```
+
+3. Para Uniforme(0,1) la distribución teórica es `F(x) = x`.
+4. Calcular las dos diferencias máximas:
+
+```
+D⁺ = max { i/N − x₍ᵢ₎ }    (i = 1…N)
+D⁻ = max { x₍ᵢ₎ − (i−1)/N } (i = 1…N)
+D  = max(D⁺, D⁻)
+```
+
+5. Comparar `D` con el valor crítico `D_crítico(α, N)`.
+
+**Valores críticos aproximados** (tabla K-S, α = 0.05):
+
+| N muestras | D_crítico |
+|------------|-----------|
+| 20 | 0.294 |
+| 50 | 0.188 |
+| 100 | 0.136 |
+| N grande | `1.36 / √N` |
+
+**Regla de decisión:**
+- `D ≤ D_crítico` → **no se rechaza H₀**
+- `D > D_crítico` → se rechaza H₀
+
+**Ventaja sobre χ²:** no requiere definir k ni agrupar; usa todos los datos en su forma continua.
+
+---
+
+### 3.3 Prueba de Independencia — Corridas (Runs test)
+
+**¿Qué mide?** Que los números no presenten tendencias o alternaciones sistemáticas
+(propiedad de independencia). Un número de corridas muy bajo indica tendencia
+(la secuencia sube y sube y sube...); muy alto indica alternación (sube-baja-sube-baja...).
+
+**Procedimiento:**
+1. Generar la secuencia `x₁, x₂, …, xₙ`.
+2. Convertir en signos: comparar cada par consecutivo:
+   - `xᵢ < xᵢ₊₁` → signo **"+"** (sube)
+   - `xᵢ > xᵢ₊₁` → signo **"−"** (baja)
+   - (si son iguales, se descarta)
+3. Una **corrida** es una racha máxima de signos iguales consecutivos.
+   Ejemplo: `+ + − − − + +` tiene 3 corridas.
+4. Para `n` suficientemente grande (n ≥ 20), el número de corridas `R` sigue aproximadamente una distribución normal:
+
+```
+μᴿ = (2N − 1) / 3
+
+σ²ᴿ = (16N − 29) / 90
+
+Z = (R − μᴿ) / σᴿ   ~  N(0,1)
+```
+
+5. Comparar `|Z|` con `Z_crítico = 1.96` (para α = 0.05, dos colas).
+
+**Regla de decisión:**
+- `|Z| ≤ 1.96` → **no se rechaza H₀** (independencia aceptable)
+- `|Z| > 1.96` → se rechaza H₀
+
+---
+
+### 3.4 Prueba de Independencia — Autocorrelación Serial
+
+**¿Qué mide?** La correlación entre un número y el que está `k` posiciones después
+(lag k). Si existe correlación para algún lag, los números no son independientes.
+
+**Procedimiento:**
+Para un lag `k` dado sobre una muestra de `N` números:
+
+```
+ρ̂(k) =  [ (1/(N−k)) · Σᵢ₌₁^(N−k) xᵢ · xᵢ₊ₖ ]  −  0.25
+          ────────────────────────────────────────────────────
+                              1/12
+```
+
+donde 0.25 = (E[X])² y 1/12 = Var[X] para Uniforme(0,1).
+
+El estimador estandarizado:
+
+```
+Z = ρ̂(k) · √(N−k)   ~  N(0,1)   (aproximadamente, N grande)
+```
+
+**Regla de decisión** (α = 0.05):
+- `|Z| ≤ 1.96` para cada lag k → **no se rechaza H₀**
+
+Se suele verificar para `k = 1, 2, 3, 4, 5` como mínimo.
+
+---
+
+### 3.5 Resumen de pruebas aplicables
+
+| Prueba | Propiedad verificada | Estadístico | Criterio α=0.05 |
+|--------|---------------------|-------------|-----------------|
+| Chi-cuadrado | Uniformidad | χ² | χ² ≤ χ²_crítico(k−1) |
+| Kolmogorov-Smirnov | Uniformidad | D = max\|Fₙ−F\| | D ≤ 1.36/√N |
+| Corridas | Independencia | Z = (R−μᴿ)/σᴿ | \|Z\| ≤ 1.96 |
+| Autocorrelación | Independencia | Z(k) para cada lag | \|Z(k)\| ≤ 1.96 |
+
+---
+
+### 3.6 Propiedades teóricas del LCG de Knuth (ANSI C)
+
+El LCG con parámetros `a=1664525, c=1013904223, m=2³²` cumple las condiciones del
+**Teorema de Hull-Dobell** para período completo:
+
+1. `c` y `m` son coprimos: `mcd(1013904223, 2³²) = 1` ✓
+2. `a − 1` es divisible por todos los factores primos de `m`: `m = 2³²`, factor primo = 2; `a−1 = 1664524 = 4 × 416131` → divisible por 4 ✓
+3. Si `m` es divisible por 4, entonces `a−1` también: `1664524 / 4 = 416131` ✓
+
+**Período:** `m = 2³² = 4 294 967 296`. Una corrida de 1 año con N≈40 llegadas/día y
+~30 dispositivos/día consume del orden de **40×5 + 30×8 ≈ 440 números LCG por día**
+× 260 días hábiles ≈ **114 400 números por año**. El período es ~37 000 veces mayor
+que la cantidad consumida → no existe riesgo de ciclo dentro de una corrida.
+
+**Limitación conocida:** los LCG exhiben estructura reticular (hyperplane structure),
+por lo cual no son adecuados para criptografía ni simulaciones Monte Carlo de muy alta
+dimensión. Para simulación de colas discreta con las dimensiones de este modelo son
+completamente suficientes.
+
+---
+
+## 4. Escala temporal y reloj
 
 **Archivo:** `SimulationState.java` → método `advanceDay()`
 
@@ -128,7 +326,7 @@ antes de buscar feriados, entonces el calendario se repite igual en el año 2.
 
 ---
 
-## 4. Feriados nacionales
+## 5. Feriados nacionales
 
 **Archivo:** `SimulationState.java` → mapa estático `HOLIDAYS`
 
@@ -156,7 +354,7 @@ El backend los procesa en ráfaga (sin esperar `tickMs`) dentro del `do-while` d
 
 ---
 
-## 5. Flujo principal de un tick
+## 6. Flujo principal de un tick
 
 **Archivo:** `SimulationEngine.java` → `processTick(SimulationState state)`
 
@@ -182,7 +380,7 @@ la lista `deviceEvents` (eventos individuales de ese día para el replay del fro
 
 ---
 
-## 6. Paso 1 — Llegadas
+## 7. Paso 1 — Llegadas
 
 **Función:** `SimulationEngine.generateArrivals(state)`
 
@@ -202,7 +400,7 @@ El resultado se guarda en `state.dailyArrivals` y se acumula en `state.totalArri
 
 ---
 
-## 7. Paso 2 — Triaje y clasificación
+## 8. Paso 2 — Triaje y clasificación
 
 **Función:** `SimulationEngine.classifyArrivals(state, n)`
 
@@ -269,7 +467,7 @@ Para cada equipo i ∈ [1..n]:
 
 ---
 
-## 8. Paso 3 — Control de cola y suspensión
+## 9. Paso 3 — Control de cola y suspensión
 
 **Función:** dentro de `processWorkDay(state)`, `SimulationEngine.java`
 
@@ -290,7 +488,7 @@ incluso si la suspensión acaba de activarse.
 
 ---
 
-## 9. Paso 4 — Desensamblaje multicanal
+## 10. Paso 4 — Desensamblaje multicanal
 
 **Función:** `SimulationEngine.processDisassemblyQueue(state)`
 
@@ -321,7 +519,7 @@ utilizationPct = dailyCapacityUsedMinutes / (operatorsAssigned × 540) × 100
 
 ---
 
-## 10. Paso 5 — Recuperación de materiales
+## 11. Paso 5 — Recuperación de materiales
 
 **Función:** `SimulationEngine.recoverMaterialValue(device, state)`
 
@@ -347,7 +545,7 @@ Los kg se acumulan en `state.materialRecoveredKg` (mapa por categoría).
 
 ---
 
-## 11. Paso 6 — Costos laborales
+## 12. Paso 6 — Costos laborales
 
 **Función:** `SimulationEngine.calculateLaborCost(state)`
 
@@ -361,7 +559,7 @@ Se aplica tanto en días hábiles normales como en días hábiles durante clausu
 
 ---
 
-## 12. Días de suspensión (clausura)
+## 13. Días de suspensión (clausura)
 
 **Función:** `SimulationEngine.processSuspensionDay(state)`
 
@@ -388,7 +586,7 @@ pero sí descuentan días del contador.
 
 ---
 
-## 13. Resumen de distribuciones
+## 14. Resumen de distribuciones
 
 | Variable | Distribución | Parámetros | Números LCG |
 |----------|-------------|-----------|-------------|
@@ -412,7 +610,7 @@ pero sí descuentan días del contador.
 
 ---
 
-## 14. Flujo del frontend — animación y replay
+## 15. Flujo del frontend — animación y replay
 
 **Archivo:** `Frontend/src/state/simulationStore.ts`
 
@@ -481,7 +679,7 @@ Eventos TRIAGE / DESGUACE / SUSPENSION_*:
 
 ---
 
-## 15. API REST y SSE
+## 16. API REST y SSE
 
 **Archivo:** `Backend/…/controller/SimulationController.java`
 
@@ -530,7 +728,7 @@ El frontend los recibe casi instantáneamente y los revela a 200 ms por evento.
 
 ---
 
-## 16. Informe final
+## 17. Informe final
 
 Hay dos caminos para llegar al informe:
 
@@ -577,7 +775,7 @@ implementan la misma lógica: para cada mes (y año si es corrida de 2 años) se
 
 ---
 
-## 17. Diagrama de flujo narrado
+## 18. Diagrama de flujo narrado
 
 ```
 INICIO DE CORRIDA
