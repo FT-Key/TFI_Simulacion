@@ -73,6 +73,8 @@ public class SimulationEngine {
             processSuspensionDay(state);
         } else if (state.isWorkDay()) {
             processWorkDay(state);
+        } else if (state.getHolidayName() != null) {
+            log.info("  Feriado nacional: {} – sin actividad.", state.getHolidayName());
         } else {
             log.info("  Fin de semana – sin actividad.");
         }
@@ -92,14 +94,23 @@ public class SimulationEngine {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void processSuspensionDay(SimulationState state) {
-        double opp = state.getRng().nextUniform(2_800_000, 4_200_000);
-        state.setDailySuspensionCost(opp);
-        state.setTotalOpportunityCost(state.getTotalOpportunityCost() + opp);
-        log.warn("  CLAUSURA │ días restantes: {} │ costo oportunidad: ${}",
-                state.getSuspensionDaysRemaining(), (long) opp);
-
-        // Los días hábiles las estaciones trabajan para evacuar la cola
         if (state.isWorkDay()) {
+            // Costo de oportunidad sólo en días hábiles (la planta hubiera trabajado)
+            double opp = state.getRng().nextUniform(2_800_000, 4_200_000);
+            state.setDailySuspensionCost(opp);
+            state.setTotalOpportunityCost(state.getTotalOpportunityCost() + opp);
+            log.warn("  CLAUSURA │ días restantes: {} │ costo oportunidad: ${}",
+                    state.getSuspensionDaysRemaining(), (long) opp);
+
+            // Notificación de clausura al inicio del día (aparece primero en el log)
+            state.getTodayEvents().add(DeviceEventDto.builder()
+                    .seq(state.nextEventSeq())
+                    .eventType("SUSPENSION_DAY")
+                    .suspensionPenalty(opp)
+                    .suspensionDaysLeft(state.getSuspensionDaysRemaining())   // antes del decremento
+                    .build());
+
+            // Las estaciones trabajan para evacuar la cola
             double matRev = processDisassemblyQueue(state);
             state.setDailyMaterialRevenue(matRev);
             state.setTotalMaterialRevenue(state.getTotalMaterialRevenue() + matRev);
@@ -107,6 +118,10 @@ public class SimulationEngine {
             double labor = calculateLaborCost(state);
             state.setDailyLaborCost(labor);
             state.setTotalLaborCost(state.getTotalLaborCost() + labor);
+        } else {
+            // Fin de semana durante clausura: sin actividad ni costo
+            log.info("  CLAUSURA (fin de semana) │ días restantes: {} │ sin actividad",
+                    state.getSuspensionDaysRemaining());
         }
 
         state.setSuspensionDaysRemaining(state.getSuspensionDaysRemaining() - 1);
@@ -117,6 +132,13 @@ public class SimulationEngine {
             state.setTotalSuspensions(state.getTotalSuspensions() + 1);
             log.info("  ✔ Suspensión finalizada. Cargo logístico: ${}. Suspensiones totales: {}",
                     (long) SUSPENSION_FIXED_COST, state.getTotalSuspensions());
+
+            // Notificación del cargo logístico fijo al final del último día
+            state.getTodayEvents().add(DeviceEventDto.builder()
+                    .seq(state.nextEventSeq())
+                    .eventType("SUSPENSION_END")
+                    .suspensionPenalty(SUSPENSION_FIXED_COST)
+                    .build());
         }
     }
 
@@ -450,9 +472,11 @@ public class SimulationEngine {
                 .tick(state.getCurrentDay())
                 .currentDay(state.getCurrentDay())
                 .currentMonth(state.getCurrentMonth())
+                .dayOfMonth(state.getDayOfMonth())
                 .dayOfWeek(state.getDayOfWeek())
                 .peakMonth(state.isPeakMonth())
                 .workDay(state.isWorkDay())
+                .holidayName(state.getHolidayName())
                 .completed(state.isCompleted())
                 // Cola / suspensión
                 .queueSize(state.getDisassemblyQueue().size())

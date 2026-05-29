@@ -1,21 +1,13 @@
-import { Fragment, useEffect, useRef } from 'react'
+import { Fragment, useEffect, useMemo, useRef } from 'react'
 import {
   Line, LineChart, CartesianGrid,
   ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
+  PieChart, Pie, Cell,
+  BarChart, Bar,
 } from 'recharts'
 import type { DeviceEvent, PlantSnapshot } from '../../types/simulation'
 import { useSimulationStore } from '../../state/simulationStore'
 import './MetricsDashboard.css'
-
-/**
- * ms entre revelar cada evento.
- * Divisor 90 ≈ máx. eventos por tick de trabajo (triage + desguace).
- * Garantiza que el log "mantiene el ritmo" sin acumular cola.
- * Ejemplos: ×540 → 50 ms | ×60 → 300 ms | ×10 → 1 800 ms | 1× → 18 000 ms
- */
-function eventRevealMs(tickMs: number): number {
-  return Math.max(50, Math.floor(tickMs / 90))
-}
 
 const ARS = (n: number) =>
   '$' + Math.round(n).toLocaleString('es-AR')
@@ -23,8 +15,9 @@ const ARS = (n: number) =>
 /** Convierte minutos desde medianoche a "HH:MM" en tiempo simulado. */
 function simTimeStr(minutes?: number): string {
   if (minutes == null) return '--:--'
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
+  const total = Math.round(minutes)   // redondear para evitar decimales del backend
+  const h = Math.floor(total / 60)
+  const m = total % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
@@ -40,24 +33,41 @@ const TYPE_COLOR: Record<string, string> = {
   INDUSTRIAL: '#e0754a',
 }
 
+const MAT_COLORS: Record<string, string> = {
+  plastico:  '#3aa1ff',
+  ferroso:   '#89a8de',
+  preciosos: '#f2c744',
+  aluminio:  '#a8b5c9',
+  cobre:     '#e0754a',
+}
+
+const MAT_LABELS: Record<string, string> = {
+  plastico:  'Plástico',
+  ferroso:   'Ferroso',
+  preciosos: 'Preciosos',
+  aluminio:  'Aluminio',
+  cobre:     'Cobre',
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props { snapshot: PlantSnapshot }
 
 export function MetricsDashboard({ snapshot }: Props) {
-  const visibleEvents = useSimulationStore((s) => s.visibleEvents)
-  const eventQueue    = useSimulationStore((s) => s.eventQueue)
-  const revealNext    = useSimulationStore((s) => s.revealNextEvent)
-  const isRunning     = useSimulationStore((s) => s.isRunning)
-  const tickMs        = useSimulationStore((s) => s.config.tickMs)
+  const visibleEvents      = useSimulationStore((s) => s.visibleEvents)
+  const eventQueue         = useSimulationStore((s) => s.eventQueue)
+  const revealNext         = useSimulationStore((s) => s.revealNextEvent)
+  const isRunning          = useSimulationStore((s) => s.isRunning)
+  const revealIntervalMs   = useSimulationStore((s) => s.revealIntervalMs)
+  const isPaused           = useSimulationStore((s) => s.isPaused)
 
-  // Intervalo fijo que consume la cola de eventos de a uno.
-  // setInterval es más robusto que setTimeout encadenado: no se cancela con cada
-  // re-render y garantiza que el primer evento aparezca sin esperar una dependencia extra.
+  // setInterval usa el intervalo adaptativo calculado en el store.
+  // Se detiene mientras la simulación esté pausada.
   useEffect(() => {
-    const id = setInterval(revealNext, eventRevealMs(tickMs))
+    if (isPaused) return
+    const id = setInterval(revealNext, revealIntervalMs)
     return () => clearInterval(id)
-  }, [revealNext, tickMs])
+  }, [revealNext, revealIntervalMs, isPaused])
 
   // Auto-scroll del log al último evento
   const logEndRef = useRef<HTMLDivElement>(null)
@@ -66,6 +76,13 @@ export function MetricsDashboard({ snapshot }: Props) {
   }, [visibleEvents.length])
 
   const series = snapshot.dailySeries.slice(-60)   // últimos 60 días para el gráfico
+
+  // Utilidad acumulada: el último punto coincide con snapshot.totalNetProfit
+  const seriesWithCum = useMemo(() => {
+    const base = snapshot.totalNetProfit - series.reduce((s, p) => s + p.dailyNetProfit, 0)
+    let cum = base
+    return series.map((p) => ({ ...p, cumulativeProfit: (cum += p.dailyNetProfit) }))
+  }, [series, snapshot.totalNetProfit])
 
   return (
     <div className="metrics-root">
@@ -117,7 +134,7 @@ export function MetricsDashboard({ snapshot }: Props) {
             <div className="chart-group">
               {/* Cola */}
               <p className="chart-label">Cola de desguace (equipos)</p>
-              <ResponsiveContainer width="100%" height={130}>
+              <ResponsiveContainer width="100%" height={105}>
                 <LineChart data={series}>
                   <CartesianGrid stroke="#1a3260" strokeDasharray="3 3" />
                   <XAxis dataKey="label" stroke="#89a8de" tick={{ fontSize: 9 }} interval={9} />
@@ -131,19 +148,43 @@ export function MetricsDashboard({ snapshot }: Props) {
                 </LineChart>
               </ResponsiveContainer>
 
-              {/* Resultado neto */}
-              <p className="chart-label">Resultado neto diario (ARS)</p>
-              <ResponsiveContainer width="100%" height={130}>
-                <LineChart data={series}>
+              {/* Resultado neto DIARIO — barras verdes/rojas */}
+              <p className="chart-label">Resultado neto por día (ARS)</p>
+              <ResponsiveContainer width="100%" height={105}>
+                <BarChart data={series} barCategoryGap="20%">
                   <CartesianGrid stroke="#1a3260" strokeDasharray="3 3" />
                   <XAxis dataKey="label" stroke="#89a8de" tick={{ fontSize: 9 }} interval={9} />
                   <YAxis stroke="#89a8de" tick={{ fontSize: 10 }} width={48} tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
                   <Tooltip
                     contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 11 }}
-                    formatter={(v: number) => [ARS(v), 'Resultado']}
+                    formatter={(v: number) => [ARS(v), 'Neto del día']}
                   />
-                  <ReferenceLine y={0} stroke="#555" />
-                  <Line type="monotone" dataKey="dailyNetProfit" stroke="#2ad46f" strokeWidth={2} dot={false} name="Neto" />
+                  <ReferenceLine y={0} stroke="#334d6e" />
+                  <Bar dataKey="dailyNetProfit" radius={[2, 2, 0, 0]} maxBarSize={18}>
+                    {series.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={entry.dailyNetProfit >= 0 ? '#2ad46f' : '#e05050'}
+                        fillOpacity={0.85}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+
+              {/* Utilidad acumulada — línea total */}
+              <p className="chart-label">Utilidad neta acumulada (ARS)</p>
+              <ResponsiveContainer width="100%" height={105}>
+                <LineChart data={seriesWithCum}>
+                  <CartesianGrid stroke="#1a3260" strokeDasharray="3 3" />
+                  <XAxis dataKey="label" stroke="#89a8de" tick={{ fontSize: 9 }} interval={9} />
+                  <YAxis stroke="#89a8de" tick={{ fontSize: 10 }} width={48} tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
+                  <Tooltip
+                    contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 11 }}
+                    formatter={(v: number) => [ARS(v), 'Acumulado']}
+                  />
+                  <ReferenceLine y={0} stroke="#334d6e" />
+                  <Line type="monotone" dataKey="cumulativeProfit" stroke="#7bc8f5" strokeWidth={2} dot={false} name="Acumulado" />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -243,6 +284,61 @@ function MiniKpi({ label, value }: { label: string; value: number }) {
   )
 }
 
+// ── Gráfico de torta de materiales ────────────────────────────────────────────
+
+function MaterialsPieChart({ materialKg }: { materialKg: Record<string, number> }) {
+  const entries = Object.entries(materialKg).filter(([, kg]) => kg > 0)
+
+  if (entries.length === 0) {
+    return <p className="no-data" style={{ fontSize: 10, padding: '6px 0' }}>Sin materiales aún</p>
+  }
+
+  const data  = entries.map(([key, kg]) => ({ key, kg: Math.round(kg) }))
+  const total = data.reduce((s, d) => s + d.kg, 0)
+
+  return (
+    <div className="mat-pie-wrap">
+      {/* Columna izquierda: donut chart en su propio contenedor de ancho fijo */}
+      <div className="mat-pie-chart-area">
+        <PieChart width={110} height={110}>
+          <Pie
+            data={data}
+            dataKey="kg"
+            cx={55}
+            cy={55}
+            innerRadius={30}
+            outerRadius={50}
+            paddingAngle={3}
+          >
+            {data.map((d) => (
+              <Cell key={d.key} fill={MAT_COLORS[d.key] ?? '#4a6fa5'} />
+            ))}
+          </Pie>
+          <Tooltip
+            contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 10 }}
+            formatter={(v: number, _n: string, props: { payload?: { key?: string } }) => [
+              `${v.toLocaleString()} kg`,
+              MAT_LABELS[props.payload?.key ?? ''] ?? props.payload?.key ?? '',
+            ]}
+          />
+        </PieChart>
+      </div>
+
+      {/* Columna derecha: leyenda */}
+      <div className="mat-pie-legend">
+        {data.map((d) => (
+          <div key={d.key} className="mat-pie-row">
+            <span className="mat-pie-dot" style={{ background: MAT_COLORS[d.key] ?? '#4a6fa5' }} />
+            <span className="mat-pie-name">{MAT_LABELS[d.key] ?? d.key}</span>
+            <span className="mat-pie-val">{d.kg.toLocaleString()} kg</span>
+            <span className="mat-pie-pct">{total > 0 ? Math.round((d.kg / total) * 100) : 0}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Panel estaciones ──────────────────────────────────────────────────────────
 
 function StationsPanel({ snapshot }: { snapshot: PlantSnapshot }) {
@@ -265,21 +361,13 @@ function StationsPanel({ snapshot }: { snapshot: PlantSnapshot }) {
               />
             </div>
             <span className="station-pct">{st.utilizationPct.toFixed(0)}%</span>
-            <span className="station-count">{st.dailyCompleted} hoy</span>
           </div>
         ))}
       </div>
       <div className="station-totals">
         <span>Total desarmados: <strong>{snapshot.totalDisassembled.toLocaleString()}</strong></span>
       </div>
-      <div className="material-mini">
-        {Object.entries(snapshot.materialRecoveredKg).map(([mat, kg]) => (
-          <div key={mat} className="mat-row">
-            <span>{mat}</span>
-            <strong>{Math.round(kg).toLocaleString()} kg</strong>
-          </div>
-        ))}
-      </div>
+      <MaterialsPieChart materialKg={snapshot.materialRecoveredKg} />
     </article>
   )
 }
@@ -299,10 +387,89 @@ function DayHeader({ day }: { day: number }) {
 // ── Fila del log de dispositivos ──────────────────────────────────────────────
 
 function DeviceEventRow({ event }: { event: DeviceEvent }) {
-  if (event.eventType === 'TRIAGE') {
-    return <TriageRow event={event} />
-  }
+  if (event.eventType === 'ARRIVALS')       return <ArrivalsRow event={event} />
+  if (event.eventType === 'DAY_END')        return <DayEndRow event={event} />
+  if (event.eventType === 'SUSPENSION_DAY') return <SuspensionDayRow event={event} />
+  if (event.eventType === 'SUSPENSION_END') return <SuspensionEndRow event={event} />
+  if (event.eventType === 'TRIAGE')         return <TriageRow event={event} />
   return <DesguaceRow event={event} />
+}
+
+function DayEndRow({ event }: { event: DeviceEvent }) {
+  const tickMs  = useSimulationStore((s) => s.config.tickMs)
+  const pausing = tickMs === 1_620_000 && event.workDay !== false
+  if (event.workDay === false) return null   // días no laborables: sin banner de cierre
+  return (
+    <div className="day-end-row">
+      <span className="day-end-icon">🏁</span>
+      <span className="day-end-text">
+        Jornada del día <strong>{event.dayNumber}</strong> finalizada — 17:00
+      </span>
+      {pausing && <span className="day-end-pause">Próximo día en 10 s…</span>}
+    </div>
+  )
+}
+
+function ArrivalsRow({ event }: { event: DeviceEvent }) {
+  if (event.workDay === false) {
+    const isHoliday = !!event.holidayName
+    return (
+      <div className={`arrivals-row non-work${isHoliday ? ' holiday' : ''}`}>
+        <span className="arrivals-icon">{isHoliday ? '🏛' : '🔒'}</span>
+        <span className="arrivals-text">
+          Planta cerrada —{' '}
+          {isHoliday
+            ? <strong className="holiday-name">{event.holidayName}</strong>
+            : 'fin de semana'}
+        </span>
+      </div>
+    )
+  }
+  if (event.suspended) {
+    return (
+      <div className="arrivals-row suspended">
+        <span className="arrivals-icon">🚫</span>
+        <span className="arrivals-text">Sin recepción de dispositivos — planta bajo clausura</span>
+      </div>
+    )
+  }
+  return (
+    <div className="arrivals-row">
+      <span className="arrivals-icon">📦</span>
+      <span className="arrivals-text">
+        <strong>{event.arrivalsCount}</strong> dispositivos ingresaron hoy
+      </span>
+      <span className="arrivals-time">08:00 — apertura de planta</span>
+    </div>
+  )
+}
+
+function SuspensionDayRow({ event }: { event: DeviceEvent }) {
+  const daysLeft    = event.suspensionDaysLeft ?? 0
+  const dayNumber   = 8 - daysLeft   // día 1 cuando daysLeft=7, día 7 cuando daysLeft=1
+  return (
+    <div className="suspension-day-row">
+      <span className="susp-icon">⚠️</span>
+      <span className="susp-label">
+        Clausura · Día <strong>{dayNumber}</strong> de 7
+      </span>
+      <span className="susp-cost">
+        Costo de oportunidad: <strong>{ARS(event.suspensionPenalty ?? 0)}</strong>
+      </span>
+    </div>
+  )
+}
+
+function SuspensionEndRow({ event }: { event: DeviceEvent }) {
+  return (
+    <div className="suspension-end-row">
+      <span className="susp-icon">🚨</span>
+      <span className="susp-label">Clausura finalizada — cargo logístico fijo</span>
+      <span className="susp-cost susp-cost--fixed">
+        <strong>−{ARS(event.suspensionPenalty ?? 0)}</strong>
+      </span>
+    </div>
+  )
 }
 
 function TriageRow({ event }: { event: DeviceEvent }) {

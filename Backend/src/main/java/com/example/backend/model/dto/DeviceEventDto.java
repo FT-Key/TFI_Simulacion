@@ -44,4 +44,17 @@ public class DeviceEventDto {
     private double preciousKg;
     private double aluminumKg;
     private double copperKg;
+
+    // ── Eventos de suspensión (SUSPENSION_DAY / SUSPENSION_END) ───────────
+    /**
+     * SUSPENSION_DAY: costo de oportunidad del día (U[$2.8M, $4.2M]).
+     * SUSPENSION_END: cargo logístico fijo ($350 000) al finalizar la clausura.
+     * Null en todos los demás tipos de evento.
+     */
+    private Double suspensionPenalty;
+    /**
+     * SUSPENSION_DAY: días de clausura que quedan ANTES de procesar este día
+     * (7 el primer día, 1 el último). Null en los demás tipos.
+     */
+    private Integer suspensionDaysLeft;
 }

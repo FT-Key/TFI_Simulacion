@@ -25,12 +25,32 @@ public class SimulationState {
     private final SimulationConfigDto config;
     private final LcgGenerator        rng;
 
+    // ── Feriados nacionales argentinos (día del año, inamovibles) ────────────────
+    private static final Map<Integer, String> HOLIDAYS = new LinkedHashMap<>();
+    static {
+        HOLIDAYS.put(  1, "Año Nuevo");
+        HOLIDAYS.put( 83, "Día Nac. de la Memoria por la Verdad y la Justicia");  // 24 Mar
+        HOLIDAYS.put( 92, "Veteranos y Caídos en la Guerra de Malvinas");          // 2 Abr
+        HOLIDAYS.put(121, "Día Internacional del Trabajador");                     // 1 May
+        HOLIDAYS.put(145, "Día de la Revolución de Mayo");                         // 25 May
+        HOLIDAYS.put(168, "Paso a la Inmortalidad del Gral. Güemes");             // 17 Jun
+        HOLIDAYS.put(171, "Paso a la Inmortalidad del Gral. Belgrano");           // 20 Jun
+        HOLIDAYS.put(190, "Día de la Independencia");                              // 9 Jul
+        HOLIDAYS.put(229, "Paso a la Inmortalidad del Gral. San Martín");         // 17 Ago
+        HOLIDAYS.put(285, "Día del Respeto a la Diversidad Cultural");            // 12 Oct
+        HOLIDAYS.put(324, "Día de la Soberanía Nacional");                        // 20 Nov
+        HOLIDAYS.put(342, "Inmaculada Concepción de María");                      // 8 Dic
+        HOLIDAYS.put(359, "Navidad");                                              // 25 Dic
+    }
+
     // ── Reloj de simulación ────────────────────────────────────────────────────
     private int     currentDay;    // 1 … 365 (o 730 para 2 años)
     private int     currentMonth;  // 1-12
+    private int     dayOfMonth;    // 1-31 dentro del mes
     private int     dayOfWeek;     // 1=Lunes … 7=Domingo
     private boolean peakMonth;     // ene(1), jun(6), jul(7), dic(12)
-    private boolean workDay;       // dayOfWeek ≤ 5
+    private boolean workDay;       // lunes-viernes Y no es feriado nacional
+    private String  holidayName;   // nombre del feriado, null si es día normal
     private boolean completed;
 
     // ── Suspensión de recepción ────────────────────────────────────────────────
@@ -123,11 +143,17 @@ public class SimulationState {
     /** Avanza el reloj un día calendario y actualiza todos los campos derivados. */
     public void advanceDay() {
         currentDay++;
-        dayOfWeek    = ((currentDay - 1) % 7) + 1;  // 1=Lunes, 7=Domingo
-        workDay      = dayOfWeek <= 5;
+        // Offset +3: día 1 = Jueves (1 Enero 2026). Sin offset sería Lunes.
+        dayOfWeek    = ((currentDay - 1 + 3) % 7) + 1;  // 1=Lunes … 7=Domingo
         currentMonth = dayOfYearToMonth(currentDay);
+        dayOfMonth   = currentDay - MONTH_END_DAY[currentMonth - 1];  // 1-based dentro del mes
         peakMonth    = (currentMonth == 1 || currentMonth == 6
                      || currentMonth == 7 || currentMonth == 12);
+
+        // Feriado: usar posición dentro del año (soporta corridas de 2 años)
+        int dayInYear = ((currentDay - 1) % 365) + 1;
+        holidayName  = HOLIDAYS.get(dayInYear);
+        workDay      = dayOfWeek <= 5 && holidayName == null;
 
         int years = config.getSimulationDurationYears() > 0 ? config.getSimulationDurationYears() : 1;
         completed = currentDay > years * 365;

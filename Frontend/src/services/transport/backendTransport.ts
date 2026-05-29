@@ -44,10 +44,24 @@ export class BackendSimulationTransport implements SimulationTransport {
     if (this.runId) {
       await fetch(`${BASE_URL}/api/simulations/runs/${this.runId}/stop`, {
         method: 'POST',
-      }).catch(() => {
-        // ignorar errores al detener (puede que ya haya terminado)
-      })
+      }).catch(() => {})
       this.runId = null
+    }
+  }
+
+  async pauseRun(): Promise<void> {
+    if (this.runId) {
+      await fetch(`${BASE_URL}/api/simulations/runs/${this.runId}/pause`, {
+        method: 'POST',
+      }).catch(() => {})
+    }
+  }
+
+  async resumeRun(): Promise<void> {
+    if (this.runId) {
+      await fetch(`${BASE_URL}/api/simulations/runs/${this.runId}/resume`, {
+        method: 'POST',
+      }).catch(() => {})
     }
   }
 

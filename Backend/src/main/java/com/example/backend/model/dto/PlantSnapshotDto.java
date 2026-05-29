@@ -21,9 +21,11 @@ public class PlantSnapshotDto {
     private int     tick;                // = currentDay (1-365)
     private int     currentDay;
     private int     currentMonth;        // 1-12
+    private int     dayOfMonth;          // 1-31 dentro del mes
     private int     dayOfWeek;           // 1=Lunes … 7=Domingo
     private boolean peakMonth;           // dic, ene, jun, jul
-    private boolean workDay;             // lunes-viernes
+    private boolean workDay;             // lunes-viernes Y no es feriado
+    private String  holidayName;         // nombre del feriado nacional, null si día normal
 
     @Getter(onMethod_ = @JsonProperty("isCompleted"))
     private boolean completed;

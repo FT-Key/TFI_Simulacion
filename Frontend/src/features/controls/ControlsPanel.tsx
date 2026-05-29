@@ -34,13 +34,18 @@ const MONTH_NAMES = [
 const DAY_NAMES = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 export function ControlsPanel() {
-  const config          = useSimulationStore((s) => s.config)
-  const isRunning       = useSimulationStore((s) => s.isRunning)
-  const snapshot        = useSimulationStore((s) => s.snapshot)
-  const startSimulation = useSimulationStore((s) => s.startSimulation)
-  const stopSimulation  = useSimulationStore((s) => s.stopSimulation)
-  const applyConfig     = useSimulationStore((s) => s.applyConfig)
-  const resetSimulation = useSimulationStore((s) => s.resetSimulation)
+  const config              = useSimulationStore((s) => s.config)
+  const isRunning           = useSimulationStore((s) => s.isRunning)
+  const isPaused            = useSimulationStore((s) => s.isPaused)
+  const snapshot            = useSimulationStore((s) => s.snapshot)
+  const isComputingReport   = useSimulationStore((s) => s.isComputingReport)
+  const startSimulation     = useSimulationStore((s) => s.startSimulation)
+  const stopSimulation      = useSimulationStore((s) => s.stopSimulation)
+  const pauseSimulation     = useSimulationStore((s) => s.pauseSimulation)
+  const resumeSimulation    = useSimulationStore((s) => s.resumeSimulation)
+  const applyConfig         = useSimulationStore((s) => s.applyConfig)
+  const resetSimulation     = useSimulationStore((s) => s.resetSimulation)
+  const computeReport       = useSimulationStore((s) => s.computeReport)
 
   const [draft, setDraft] = useState<SimulationConfig>(config)
 
@@ -191,6 +196,9 @@ export function ControlsPanel() {
             <span className={`run-day-name${snapshot.workDay ? '' : ' weekend'}`}>
               {DAY_NAMES[snapshot.dayOfWeek]}
             </span>
+            {snapshot.dayOfMonth > 0 && (
+              <span className="day-of-month-badge">{snapshot.dayOfMonth}</span>
+            )}
             <span className={`month-badge${snapshot.peakMonth ? ' peak' : ''}`}>
               {MONTH_NAMES[snapshot.currentMonth]}
               {snapshot.peakMonth && ' ★'}
@@ -202,6 +210,12 @@ export function ControlsPanel() {
               style={{ width: `${(snapshot.currentDay / 365) * 100}%` }}
             />
           </div>
+          {isPaused && (
+            <div className="paused-badge">⏸ Simulación pausada</div>
+          )}
+          {snapshot.holidayName && (
+            <div className="holiday-badge">🏛 {snapshot.holidayName}</div>
+          )}
           {snapshot.suspended && (
             <div className="suspension-badge">
               ⚠ CLAUSURA — {snapshot.suspensionDaysRemaining} días restantes
@@ -211,7 +225,7 @@ export function ControlsPanel() {
         </div>
       )}
 
-      {/* ── Iniciar / detener ────────────────────────────────────── */}
+      {/* ── Iniciar / pausar / detener ───────────────────────────── */}
       <div className="run-actions">
         {!isRunning ? (
           <button
@@ -223,8 +237,28 @@ export function ControlsPanel() {
             {isCompleted ? 'Corrida completada' : 'Iniciar simulación'}
           </button>
         ) : (
-          <button type="button" className="warning" onClick={() => stopSimulation()}>
-            Detener simulación
+          <>
+            <button
+              type="button"
+              className={isPaused ? 'resume' : 'pause'}
+              onClick={() => isPaused ? resumeSimulation() : pauseSimulation()}
+            >
+              {isPaused ? '▶ Reanudar' : '⏸ Pausar'}
+            </button>
+            <button type="button" className="warning" onClick={() => stopSimulation()}>
+              ■ Detener
+            </button>
+          </>
+        )}
+        {(isRunning || isPaused || isCompleted) && (
+          <button
+            type="button"
+            className="report-btn"
+            onClick={() => void computeReport()}
+            disabled={isComputingReport}
+            title="Detiene la animación y genera el informe final al instante"
+          >
+            {isComputingReport ? 'Calculando…' : '📋 Finalizar e Informar'}
           </button>
         )}
       </div>

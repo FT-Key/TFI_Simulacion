@@ -167,6 +167,17 @@
 
 .run-day-name.weekend { color: #89a8de; background: #89a8de18; }
 
+.day-of-month-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c5d9f9;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #1a3260;
+  min-width: 20px;
+  text-align: center;
+}
+
 .month-badge {
   font-size: 10px;
   color: #89a8de;
@@ -212,6 +223,27 @@
   text-align: center;
 }
 
+.paused-badge {
+  font-size: 11px;
+  color: #a78bfa;
+  background: #a78bfa18;
+  border: 1px solid #a78bfa40;
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.holiday-badge {
+  font-size: 10px;
+  color: #f2c744;
+  background: #f2c74418;
+  border: 1px solid #f2c74440;
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: center;
+  line-height: 1.4;
+}
+
 .run-actions button {
   width: 100%;
   padding: 10px;
@@ -225,3 +257,11 @@
 .run-actions button:disabled { opacity: 0.35; cursor: not-allowed; }
 button.success { background: #2ad46f; color: #021a0a; }
 button.warning { background: #f2c744; color: #1a1000; }
+button.pause   { background: #3aa1ff; color: #001a33; }
+button.resume  { background: #a78bfa; color: #0d0020; }
+
+.run-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

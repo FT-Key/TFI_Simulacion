@@ -20,6 +20,19 @@ export class MockSimulationTransport implements SimulationTransport {
     this.engine = null
   }
 
+  async pauseRun(): Promise<void> {
+    if (this.timer !== null) {
+      window.clearInterval(this.timer)
+      this.timer = null
+    }
+  }
+
+  async resumeRun(): Promise<void> {
+    if (this.engine) {
+      this.startLoop(this.engine.getConfig().tickMs)
+    }
+  }
+
   async updateConfig(config: SimulationConfig): Promise<void> {
     if (!this.engine) {
       return

@@ -2,6 +2,7 @@ package com.example.backend.controller;
 
 import com.example.backend.model.dto.PlantSnapshotDto;
 import com.example.backend.model.dto.SimulationConfigDto;
+import com.example.backend.model.dto.SimulationReportDto;
 import com.example.backend.model.dto.StartRunResponse;
 import com.example.backend.service.SimulationService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,13 @@ public class SimulationController {
 
     private final SimulationService simulationService;
 
+    // ── Cómputo completo (sin animación) ─────────────────────────────────
+
+    @PostMapping("/compute")
+    public ResponseEntity<SimulationReportDto> compute(@RequestBody SimulationConfigDto config) {
+        return ResponseEntity.ok(simulationService.computeFullRun(config));
+    }
+
     // ── REST: inicio ──────────────────────────────────────────────────────
 
     @PostMapping("/runs")
@@ -45,6 +53,20 @@ public class SimulationController {
     @PostMapping("/runs/{runId}/stop")
     public ResponseEntity<Void> stopRun(@PathVariable String runId) {
         simulationService.stopRun(runId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // ── REST: pausar / reanudar ───────────────────────────────────────────
+
+    @PostMapping("/runs/{runId}/pause")
+    public ResponseEntity<Void> pauseRun(@PathVariable String runId) {
+        simulationService.pauseRun(runId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/runs/{runId}/resume")
+    public ResponseEntity<Void> resumeRun(@PathVariable String runId) {
+        simulationService.resumeRun(runId);
         return ResponseEntity.noContent().build();
     }
 
