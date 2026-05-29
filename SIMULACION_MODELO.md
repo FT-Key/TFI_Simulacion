@@ -113,186 +113,107 @@ resultado = mean + σ·Z
 
 ---
 
-## 3. Pruebas estadísticas del generador
+## 3. Prueba estadística del generador — Kolmogorov-Smirnov (KS)
 
-Para que los números del LCG sean utilizables en simulación deben cumplir dos propiedades
-fundamentales: **uniformidad** (se distribuyen homogéneamente en [0,1)) e **independencia**
-(ningún número puede predecirse a partir de los anteriores). Cada una se verifica con una
-prueba distinta.
+**Archivo:** `Backend/…/model/LcgGenerator.java`
 
-> **Hipótesis nula (H₀) en todas las pruebas:** los números provienen de una distribución
-> Uniforme(0,1) independiente e idénticamente distribuida.
-> Si el estadístico cae en la zona de rechazo → el generador falla esa prueba.
+La prueba de Kolmogorov-Smirnov se aplica **dentro de `next()` cada vez que se genera
+un número aleatorio**. Verifica que los últimos `n` valores producidos sean compatibles
+con una distribución Uniforme(0,1).
 
----
-
-### 3.1 Prueba de Uniformidad — Chi-cuadrado (χ²)
-
-**¿Qué mide?** Que los números caigan con igual frecuencia en todos los subintervalos de [0,1).
-
-**Procedimiento:**
-1. Generar una muestra de `N` números del LCG.
-2. Dividir [0, 1) en `k` subintervalos iguales de ancho `1/k`.
-3. Contar la frecuencia observada `Oᵢ` en cada subintervalo.
-4. La frecuencia esperada es `Eᵢ = N/k` para todos (por uniformidad).
-5. Calcular el estadístico:
-
-```
-χ² = Σᵢ₌₁ᵏ  (Oᵢ − Eᵢ)²
-              ──────────
-                  Eᵢ
-```
-
-6. Comparar con el valor crítico `χ²(α, k−1)` de la tabla chi-cuadrado con `k−1` grados de libertad y nivel de significación `α` (usualmente 0.05).
-
-**Regla de decisión:**
-- `χ²_calculado ≤ χ²_crítico` → **no se rechaza H₀** (el generador pasa la prueba)
-- `χ²_calculado > χ²_crítico` → se rechaza H₀ (problema de uniformidad)
-
-**Valores de referencia comunes** (α = 0.05):
-
-| k subintervalos | gl (k−1) | χ²_crítico |
-|-----------------|----------|------------|
-| 10 | 9 | 16.92 |
-| 20 | 19 | 30.14 |
-| 100 | 99 | 123.23 |
-
-**Recomendación:** usar `N ≥ 5k` para que cada `Eᵢ ≥ 5` (condición de validez de la aproximación chi-cuadrado). Para `k = 10` → `N ≥ 50`; para `k = 100` → `N ≥ 500`.
+> **Hipótesis nula (H₀):** los números provienen de U(0,1).
+> Si D > D_crítico → se rechaza H₀ → el candidato se descarta y se genera otro.
 
 ---
 
-### 3.2 Prueba de Uniformidad — Kolmogorov-Smirnov (K-S)
+### 3.1 Procedimiento matemático
 
-**¿Qué mide?** Lo mismo que χ² pero comparando directamente la función de distribución
-empírica con la teórica. Es más potente que χ² para muestras pequeñas y no requiere
-agrupar en intervalos.
-
-**Procedimiento:**
-1. Generar `N` números y **ordenarlos** de menor a mayor: `x₍₁₎ ≤ x₍₂₎ ≤ … ≤ x₍ₙ₎`.
-2. Construir la función de distribución empírica:
+Dada una muestra de `n` valores ordenados `x₍₁₎ ≤ x₍₂₎ ≤ … ≤ x₍ₙ₎`:
 
 ```
-Fₙ(x₍ᵢ₎) = i / N
-```
-
-3. Para Uniforme(0,1) la distribución teórica es `F(x) = x`.
-4. Calcular las dos diferencias máximas:
-
-```
-D⁺ = max { i/N − x₍ᵢ₎ }    (i = 1…N)
-D⁻ = max { x₍ᵢ₎ − (i−1)/N } (i = 1…N)
+D⁺ = max { i/n − x₍ᵢ₎ }      i = 1 … n
+D⁻ = max { x₍ᵢ₎ − (i−1)/n }  i = 1 … n
 D  = max(D⁺, D⁻)
 ```
 
-5. Comparar `D` con el valor crítico `D_crítico(α, N)`.
+- `D⁺` mide cuánto supera la distribución empírica a la teórica (sesgo hacia arriba).
+- `D⁻` mide cuánto queda por debajo (sesgo hacia abajo).
+- `D` es el estadístico bilateral: la mayor discrepancia en cualquier dirección.
 
-**Valores críticos aproximados** (tabla K-S, α = 0.05):
+**Valor crítico** (α = 0.05, aproximación para n ≥ 20):
 
-| N muestras | D_crítico |
+```
+D_crítico = 1.36 / √n
+```
+
+| n muestras | D_crítico |
 |------------|-----------|
-| 20 | 0.294 |
-| 50 | 0.188 |
+| 20 | 0.304 |
+| 50 | 0.192 |
 | 100 | 0.136 |
-| N grande | `1.36 / √N` |
 
 **Regla de decisión:**
-- `D ≤ D_crítico` → **no se rechaza H₀**
-- `D > D_crítico` → se rechaza H₀
-
-**Ventaja sobre χ²:** no requiere definir k ni agrupar; usa todos los datos en su forma continua.
+- `D ≤ D_crítico` → no se rechaza H₀ → número **aceptado**
+- `D > D_crítico` → se rechaza H₀ → número **descartado**, se genera otro
 
 ---
 
-### 3.3 Prueba de Independencia — Corridas (Runs test)
+### 3.2 Integración en `LcgGenerator.next()`
 
-**¿Qué mide?** Que los números no presenten tendencias o alternaciones sistemáticas
-(propiedad de independencia). Un número de corridas muy bajo indica tendencia
-(la secuencia sube y sube y sube...); muy alto indica alternación (sube-baja-sube-baja...).
-
-**Procedimiento:**
-1. Generar la secuencia `x₁, x₂, …, xₙ`.
-2. Convertir en signos: comparar cada par consecutivo:
-   - `xᵢ < xᵢ₊₁` → signo **"+"** (sube)
-   - `xᵢ > xᵢ₊₁` → signo **"−"** (baja)
-   - (si son iguales, se descarta)
-3. Una **corrida** es una racha máxima de signos iguales consecutivos.
-   Ejemplo: `+ + − − − + +` tiene 3 corridas.
-4. Para `n` suficientemente grande (n ≥ 20), el número de corridas `R` sigue aproximadamente una distribución normal:
+El generador mantiene una **ventana deslizante** de los últimos 100 números producidos.
+Cada llamada a `next()` sigue este flujo:
 
 ```
-μᴿ = (2N − 1) / 3
-
-σ²ᴿ = (16N − 29) / 90
-
-Z = (R − μᴿ) / σᴿ   ~  N(0,1)
+next()
+  │
+  ├─ Para attempt = 0 … KS_MAX_RETRIES (10):
+  │    │
+  │    ├─ rawNext()  →  candidate = (a·state + c) mod m  /  m
+  │    │
+  │    ├─ Agregar candidate a la ventana deslizante
+  │    │   (si ventana ya tiene 100 elementos, eliminar el más antiguo)
+  │    │
+  │    ├─ Si ventana < 20 elementos:
+  │    │    └─ retornar candidate  (sin potencia estadística aún)
+  │    │
+  │    ├─ passesKS():
+  │    │    ├─ Ordenar los n elementos de la ventana
+  │    │    ├─ Calcular D = max(D⁺, D⁻)
+  │    │    └─ Retornar D ≤ 1.36/√n
+  │    │
+  │    ├─ Si passesKS() = true  → retornar candidate  ✓
+  │    │
+  │    └─ Si passesKS() = false → quitar candidate de la ventana, reintentar
+  │
+  └─ Si se agotan 10 intentos:
+       rawNext() → aceptar de todas formas (evitar ciclo infinito)
 ```
 
-5. Comparar `|Z|` con `Z_crítico = 1.96` (para α = 0.05, dos colas).
+**Parámetros implementados:**
 
-**Regla de decisión:**
-- `|Z| ≤ 1.96` → **no se rechaza H₀** (independencia aceptable)
-- `|Z| > 1.96` → se rechaza H₀
+| Constante | Valor | Descripción |
+|-----------|-------|-------------|
+| `KS_WINDOW_SIZE` | 100 | Tamaño de la ventana deslizante |
+| `KS_MIN_SAMPLES` | 20 | Mínimo antes de aplicar KS |
+| `KS_MAX_RETRIES` | 10 | Intentos máximos por llamada |
+| `KS_ALPHA_FACTOR` | 1.36 | Factor para α=0.05 |
 
 ---
 
-### 3.4 Prueba de Independencia — Autocorrelación Serial
+### 3.3 Propiedades teóricas del LCG de Knuth (ANSI C)
 
-**¿Qué mide?** La correlación entre un número y el que está `k` posiciones después
-(lag k). Si existe correlación para algún lag, los números no son independientes.
+El LCG con `a=1664525, c=1013904223, m=2³²` cumple el **Teorema de Hull-Dobell**
+(período completo = m):
 
-**Procedimiento:**
-Para un lag `k` dado sobre una muestra de `N` números:
+1. `mcd(c, m) = mcd(1013904223, 2³²) = 1` ✓
+2. `a − 1 = 1664524` es divisible por 4 (único factor primo de m=2³²) ✓
 
-```
-ρ̂(k) =  [ (1/(N−k)) · Σᵢ₌₁^(N−k) xᵢ · xᵢ₊ₖ ]  −  0.25
-          ────────────────────────────────────────────────────
-                              1/12
-```
+**Período:** 2³² ≈ 4300 millones. Una corrida de 1 año consume ~114 400 números,
+37 000× menor que el período → sin riesgo de ciclo.
 
-donde 0.25 = (E[X])² y 1/12 = Var[X] para Uniforme(0,1).
-
-El estimador estandarizado:
-
-```
-Z = ρ̂(k) · √(N−k)   ~  N(0,1)   (aproximadamente, N grande)
-```
-
-**Regla de decisión** (α = 0.05):
-- `|Z| ≤ 1.96` para cada lag k → **no se rechaza H₀**
-
-Se suele verificar para `k = 1, 2, 3, 4, 5` como mínimo.
-
----
-
-### 3.5 Resumen de pruebas aplicables
-
-| Prueba | Propiedad verificada | Estadístico | Criterio α=0.05 |
-|--------|---------------------|-------------|-----------------|
-| Chi-cuadrado | Uniformidad | χ² | χ² ≤ χ²_crítico(k−1) |
-| Kolmogorov-Smirnov | Uniformidad | D = max\|Fₙ−F\| | D ≤ 1.36/√N |
-| Corridas | Independencia | Z = (R−μᴿ)/σᴿ | \|Z\| ≤ 1.96 |
-| Autocorrelación | Independencia | Z(k) para cada lag | \|Z(k)\| ≤ 1.96 |
-
----
-
-### 3.6 Propiedades teóricas del LCG de Knuth (ANSI C)
-
-El LCG con parámetros `a=1664525, c=1013904223, m=2³²` cumple las condiciones del
-**Teorema de Hull-Dobell** para período completo:
-
-1. `c` y `m` son coprimos: `mcd(1013904223, 2³²) = 1` ✓
-2. `a − 1` es divisible por todos los factores primos de `m`: `m = 2³²`, factor primo = 2; `a−1 = 1664524 = 4 × 416131` → divisible por 4 ✓
-3. Si `m` es divisible por 4, entonces `a−1` también: `1664524 / 4 = 416131` ✓
-
-**Período:** `m = 2³² = 4 294 967 296`. Una corrida de 1 año con N≈40 llegadas/día y
-~30 dispositivos/día consume del orden de **40×5 + 30×8 ≈ 440 números LCG por día**
-× 260 días hábiles ≈ **114 400 números por año**. El período es ~37 000 veces mayor
-que la cantidad consumida → no existe riesgo de ciclo dentro de una corrida.
-
-**Limitación conocida:** los LCG exhiben estructura reticular (hyperplane structure),
-por lo cual no son adecuados para criptografía ni simulaciones Monte Carlo de muy alta
-dimensión. Para simulación de colas discreta con las dimensiones de este modelo son
-completamente suficientes.
+Con el LCG de Knuth la prueba KS falla con extrema rareza (D típico ≈ 0.05–0.10
+frente a D_crítico = 0.136 para n=100). El mecanismo de reintento existe como
+salvaguarda formal, no como corrección habitual.
 
 ---
 

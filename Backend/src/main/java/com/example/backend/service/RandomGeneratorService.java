@@ -7,9 +7,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Servicio que expone la lógica matemática de Generadores.java y Pruebas.java
- * como beans Spring. Usado para crear generadores por corrida y para
- * ejecutar pruebas estadísticas sobre las muestras generadas.
+ * Expone la lógica del generador LCG y la prueba KS como beans Spring.
+ * Usado para crear generadores por corrida y para validar muestras externas.
+ *
+ * La validación KS durante la generación está integrada directamente en
+ * LcgGenerator.next(), por lo que cada número producido ya fue aceptado
+ * por la prueba antes de ser retornado.
  */
 @Service
 public class RandomGeneratorService {
@@ -19,12 +22,12 @@ public class RandomGeneratorService {
         return new LcgGenerator(seed);
     }
 
-    /** Crea un generador LCG con parámetros explícitos (como congruencialMixto original). */
+    /** Crea un generador LCG con parámetros explícitos. */
     public LcgGenerator createGenerator(long seed, long a, long c, long m) {
         return new LcgGenerator(seed, a, c, m);
     }
 
-    /** Genera una secuencia de N valores uniformes en [0,1) y la retorna. */
+    /** Genera N valores uniformes en [0,1) con el LCG validado y los retorna. */
     public List<Double> generateUniformSamples(long seed, int cantidad) {
         LcgGenerator gen = createGenerator(seed);
         List<Double> result = new ArrayList<>(cantidad);
@@ -34,35 +37,28 @@ public class RandomGeneratorService {
         return result;
     }
 
-    // ── Pruebas estadísticas (equivalente a Pruebas.java) ──────────────────
+    // ── Prueba estadística ────────────────────────────────────────────────────
 
     /**
-     * Prueba del Promedio: no rechaza H0 si |Z0| < zCritico.
-     * H0: los números provienen de U(0,1).
+     * Prueba de Kolmogorov-Smirnov bilateral sobre una muestra dada (α = 0.05).
+     *
+     * Calcula D = max(D+, D−) sobre la muestra ordenada y lo compara contra
+     * el valor crítico aproximado 1.36 / √n.
+     *
+     * Retorna true si no se rechaza H₀ (la muestra es compatible con U(0,1)).
      */
-    public boolean pruebaPromedio(List<Double> numeros, double zCritico) {
-        if (numeros.isEmpty()) return false;
-        double suma = numeros.stream().mapToDouble(Double::doubleValue).sum();
-        double promedio = suma / numeros.size();
-        double z0 = ((promedio - 0.5) * Math.sqrt(numeros.size())) / 0.288;
-        return Math.abs(z0) < zCritico;
-    }
-
-    /**
-     * Prueba de Kolmogorov-Smirnov: no rechaza H0 si Dn < daCritico.
-     * H0: los números provienen de U(0,1).
-     */
-    public boolean pruebaKolmogorovSmirnov(List<Double> numeros, double daCritico) {
-        if (numeros.isEmpty()) return false;
+    public boolean pruebaKolmogorovSmirnov(List<Double> numeros) {
+        if (numeros == null || numeros.isEmpty()) return false;
         List<Double> sorted = new ArrayList<>(numeros);
         sorted.sort(null);
-        int n = sorted.size();
-        double dn = 0;
+        int    n    = sorted.size();
+        double dMax = 0.0;
         for (int i = 0; i < n; i++) {
-            double empirical = (double) (i + 1) / n;
-            double diff = empirical - sorted.get(i);
-            if (diff > dn) dn = diff;
+            double dPlus  = (double)(i + 1) / n - sorted.get(i);
+            double dMinus = sorted.get(i) - (double) i / n;
+            dMax = Math.max(dMax, Math.max(dPlus, dMinus));
         }
-        return dn < daCritico;
+        double dCritical = 1.36 / Math.sqrt(n);
+        return dMax <= dCritical;
     }
 }
