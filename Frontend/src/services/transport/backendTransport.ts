@@ -1,7 +1,7 @@
 import type { PlantSnapshot, SimulationConfig } from '../../types/simulation'
 import type { SimulationTransport, SnapshotListener } from './types'
 
-const BASE_URL = 'http://localhost:8080'
+const BASE_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
 
 /**
  * Transport real que se conecta al backend Spring Boot.

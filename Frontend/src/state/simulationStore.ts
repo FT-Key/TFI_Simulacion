@@ -399,7 +399,7 @@ function buildReportFromSnapshot(
     totalArrived:        snapshot.totalArrived,
     totalCaseA:          snapshot.totalCaseA,
     totalTerminalWaste:  snapshot.totalTerminalWaste,
-    totalCaseB:          snapshot.totalCaseB ?? (snapshot.totalArrived - snapshot.totalCaseA - snapshot.totalTerminalWaste),
+    totalCaseB:          snapshot.totalArrived - snapshot.totalCaseA - snapshot.totalTerminalWaste,
     totalDisassembled:   snapshot.totalDisassembled,
     totalSuspensions:    snapshot.totalSuspensions,
     totalCaseARevenue:   snapshot.totalCaseARevenue,
@@ -416,7 +416,7 @@ function buildReportFromSnapshot(
   }
 }
 
-const BACKEND_URL = 'http://localhost:8080'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8080'
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 

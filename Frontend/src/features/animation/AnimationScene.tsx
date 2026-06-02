@@ -749,7 +749,6 @@ export function AnimationScene() {
   //
   // occupiedSlots incluye TODOS los emps (cualquier fase), no solo 'working', para
   // que un slot con un emp en 'to_bin' o 'returning' no reciba un phantom espurio.
-  const workingEmps   = desguaceEmps.filter((e) => e.phase === 'working')
   const occupiedSlots = new Set(desguaceEmps.map((e) => e.slot))
   const maxSlots      = stations * opsPerStation
 

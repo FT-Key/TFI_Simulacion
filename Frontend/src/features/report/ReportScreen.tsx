@@ -16,15 +16,10 @@ const KG = (n: number) =>
 const PCT = (n: number) =>
   (Math.round(n * 10) / 10).toFixed(1) + '%'
 
-const MONTH_FULL = [
-  '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-]
-
 export function ReportScreen({ report, onDismiss, backLabel = '← Volver al dashboard' }: Props) {
   const {
     config, source,
-    totalArrived, totalCaseA, totalTerminalWaste, totalCaseB, totalDisassembled, totalSuspensions,
+    totalArrived, totalCaseA, totalTerminalWaste, totalDisassembled, totalSuspensions,
     totalCaseARevenue, totalMaterialRevenue, totalLaborCost,
     totalOpportunityCost, totalLogisticCost, totalNetProfit,
     materialRecoveredKg, kpis, stations, monthlySeries,

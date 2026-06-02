@@ -132,7 +132,7 @@ export function MetricsDashboard({ snapshot }: Props) {
                   <YAxis stroke="#89a8de" tick={{ fontSize: 10 }} width={32} domain={[0, 'auto']} />
                   <Tooltip
                     contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 11 }}
-                    formatter={(v: number) => [v, 'Equipos en cola']}
+                    formatter={(v) => [v as number, 'Equipos en cola']}
                   />
                   <ReferenceLine y={250} stroke="#e05050" strokeDasharray="4 2" label={{ value: 'Límite 250', fill: '#e05050', fontSize: 10 }} />
                   <Line type="monotone" dataKey="queueSize" stroke="#c96fd8" strokeWidth={2} dot={false} name="Cola" />
@@ -148,7 +148,7 @@ export function MetricsDashboard({ snapshot }: Props) {
                   <YAxis stroke="#89a8de" tick={{ fontSize: 10 }} width={48} tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
                   <Tooltip
                     contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 11 }}
-                    formatter={(v: number) => [ARS(v), 'Neto del día']}
+                    formatter={(v) => [ARS(v as number), 'Neto del día']}
                   />
                   <ReferenceLine y={0} stroke="#334d6e" />
                   <Bar dataKey="dailyNetProfit" radius={[2, 2, 0, 0]} maxBarSize={18}>
@@ -172,7 +172,7 @@ export function MetricsDashboard({ snapshot }: Props) {
                   <YAxis stroke="#89a8de" tick={{ fontSize: 10 }} width={48} tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
                   <Tooltip
                     contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 11 }}
-                    formatter={(v: number) => [ARS(v), 'Acumulado']}
+                    formatter={(v) => [ARS(v as number), 'Acumulado']}
                   />
                   <ReferenceLine y={0} stroke="#334d6e" />
                   <Line type="monotone" dataKey="cumulativeProfit" stroke="#7bc8f5" strokeWidth={2} dot={false} name="Acumulado" />
@@ -332,9 +332,9 @@ function MaterialsPieChart({ materialKg }: { materialKg: Record<string, number> 
           </Pie>
           <Tooltip
             contentStyle={{ background: '#0c1f3d', border: '1px solid #2c5ea2', fontSize: 10 }}
-            formatter={(v: number, _n: string, props: { payload?: { key?: string } }) => [
-              `${v.toLocaleString()} kg`,
-              MAT_LABELS[props.payload?.key ?? ''] ?? props.payload?.key ?? '',
+            formatter={(v, _n, props) => [
+              `${(v as number).toLocaleString()} kg`,
+              MAT_LABELS[(props as { payload?: { key?: string } }).payload?.key ?? ''] ?? (props as { payload?: { key?: string } }).payload?.key ?? '',
             ]}
           />
         </PieChart>
