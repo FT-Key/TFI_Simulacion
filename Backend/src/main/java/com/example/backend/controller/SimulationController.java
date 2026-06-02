@@ -25,7 +25,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * El frontend conecta usando:
  *   new EventSource('http://localhost:8080/api/simulations/runs/{runId}/stream')
  */
-@CrossOrigin(origins = { "http://localhost:5173", "http://localhost:4173" })
+@CrossOrigin(origins = { "http://localhost:5173", "http://localhost:4173", "https://tfi-simulacion-bice.vercel.app" })
 @RestController
 @RequestMapping("/api/simulations")
 @RequiredArgsConstructor
