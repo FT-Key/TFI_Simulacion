@@ -5,14 +5,7 @@
 
 PARA CONECTAR EL FRONTEND AL BACKEND
 --------------------------------------
-Cambiar una sola línea en:
-  Frontend/src/services/transport/index.ts
-
-  // Cambiar:
-  return new MockSimulationTransport()
-  // Por:
-  return new BackendSimulationTransport()
-
+El frontend ya usa BackendSimulationTransport por defecto.
 El backend debe estar corriendo en http://localhost:8080
 
 
@@ -55,8 +48,6 @@ com.example.backend/
 │       ├── PlantSnapshotDto       Estado del galpón enviado por SSE cada tick
 │       ├── StationSnapshotDto     Estado de una estación (para el frontend)
 │       ├── KpiSnapshotDto         Porcentajes de recuperación / descarte
-│       ├── WeeklyPerformancePointDto  Punto del gráfico de serie temporal
-│       ├── ComparisonPointDto     Punto del gráfico de comparación de materiales
 │       └── StartRunResponse       Respuesta al iniciar una corrida {runId}
 │
 └── service/

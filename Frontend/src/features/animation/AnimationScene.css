@@ -1,0 +1,703 @@
+/* ═══════════════════════════════════════════════════════════════════
+   AnimationScene — Planta EMA S.R.L.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.sprite-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #050d18;
+  user-select: none;
+}
+
+/* ── Fondo ───────────────────────────────────────────────────────── */
+
+.scene-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /*
+   * center 100% = alinea la PARTE INFERIOR del galpon al borde
+   * inferior del contenedor → muestra la máxima cantidad de piso.
+   */
+  object-position: center 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Reloj digital simulado ──────────────────────────────────────── */
+
+.sim-clock {
+  position: absolute;
+  top: 2%;
+  left: 1%;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 8, 18, 0.82);
+  border: 1px solid rgba(0, 210, 100, 0.35);
+  border-radius: 5px;
+  padding: 5px 10px 4px;
+  box-shadow: 0 0 14px rgba(0, 200, 80, 0.15), inset 0 0 8px rgba(0,0,0,0.6);
+}
+
+.sim-clock-display {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #00e676;
+  text-shadow:
+    0 0 6px rgba(0, 230, 118, 0.9),
+    0 0 16px rgba(0, 230, 118, 0.4);
+  line-height: 1;
+}
+
+.sim-clock-closed {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: #e05050;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/* ── Agrupador de fila (sin layout propio, solo semántico) ───────── */
+
+.station-row-group {
+  display: contents;  /* no genera caja, los hijos se ubican normalmente */
+}
+
+/* ── Estaciones (mesas) ──────────────────────────────────────────────
+   z-index dinámico: --stz (10, 20, 30 …)
+   width: 44% → proporcional al ancho del galpon
+   translateY(-20%): centra visualmente en --sy
+   ──────────────────────────────────────────────────────────────────── */
+
+.scene-station {
+  position: absolute;
+  left: 32%;
+  top: var(--sy);
+  width: var(--stw, 44%);   /* escala con la cantidad de estaciones */
+  height: auto;
+  image-rendering: pixelated;
+  pointer-events: none;
+  transform: translateY(-20%);
+  z-index: var(--stz, 10);
+}
+
+/* ── Empleados ──────────────────────────────────────────────────────
+   z-index dinámico: --empz  (8, 18, 28 …)
+     → delante de las estaciones más al fondo (z menor)
+     → detrás de su propia estación (stz = empz + 2)
+   ──────────────────────────────────────────────────────────────────── */
+
+.scene-emp {
+  position: absolute;
+  left: var(--ex);
+  top:  var(--ey);
+  transform: translate(-50%, -90%);
+  transition:
+    left 1.3s ease-in-out,
+    top  1.0s ease-in-out;
+  z-index: var(--empz, 8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.emp-idle { opacity: 0.85; }
+
+.emp-body {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+}
+
+.emp-spr {
+  height: 18vh;
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(1px 3px 5px rgba(0, 0, 0, 0.9));
+  transition: transform 0.12s;
+}
+
+.emp-carried {
+  position: absolute;
+  height: 9vh;
+  width: auto;
+  image-rendering: pixelated;
+  right: -110%;
+  bottom: 8%;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.85));
+}
+
+.emp-tag {
+  font-size: 8px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* ── Cola de llegada — columna junto al triajista ────────────────── */
+
+.arrival-queue {
+  position: absolute;
+  left: 2%;
+  top: 16%;
+  width: 9%;
+  max-height: 78%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  z-index: 100;
+}
+
+/* Encabezado: conteo total + etiqueta */
+.q-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.q-total {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffd37e;
+  text-shadow: 0 0 8px rgba(255, 200, 80, 0.7), 0 1px 3px #000;
+  line-height: 1;
+}
+
+.q-header-lbl {
+  font-size: 8px;
+  color: #aac4ff;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+  letter-spacing: 0.05em;
+}
+
+/* Columna de sprites de impresoras */
+.q-printers-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0px;
+  width: 100%;
+}
+
+.q-printer {
+  width: 52%;          /* más chicas — eran 80% */
+  height: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.85));
+  flex-shrink: 0;
+  margin-top: -8px;    /* superposición tipo pila */
+}
+
+.q-printer:first-child {
+  margin-top: 0;
+}
+
+.q-badge {
+  margin-top: 3px;
+  font-size: 9px;
+  background: rgba(255, 211, 126, 0.18);
+  border: 1px solid rgba(138, 106, 26, 0.65);
+  border-radius: 8px;
+  padding: 1px 6px;
+  color: #ffd37e;
+  white-space: nowrap;
+}
+
+/* ── Cola B ──────────────────────────────────────────────────────── */
+
+.colab-box {
+  position: absolute;
+  left: 19%;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 211, 126, 0.45);
+  border-radius: 6px;
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 110px;
+}
+
+.colab-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #ffd37e;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.colab-printers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+
+.colab-printer {
+  height: 16px;
+  width: auto;
+  image-rendering: pixelated;
+}
+
+.colab-count {
+  font-size: 9px;
+  color: #aac4ff;
+}
+
+.colab-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.colab-stat {
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.colab-stat--wait { color: #aac4ff; }
+.colab-stat--proc { color: #2ad46f; font-weight: 700; }
+
+/* ── Columna de bins (derecha, sin fondo) ────────────────────────── */
+
+.bins-col {
+  position: absolute;
+  right: 0.5%;
+  top: 2%;
+  width: 14%;
+  height: 84%;    /* ajustado para no solapar la barra inferior */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  padding-top: 1%;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.bin-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  /* Mayor superposición para que los 7 bins + $ quepan bien en la columna */
+  margin-top: -26px;
+  transition: filter 0.25s ease, transform 0.2s ease;
+}
+
+.bin-slot:first-child {
+  margin-top: 0;
+}
+
+.bin-slot.bin-active {
+  filter: brightness(1.7) drop-shadow(0 0 12px rgba(255, 211, 126, 0.95));
+  transform: scale(1.1);
+}
+
+.bin-img {
+  height: 100px;      /* más grandes — era 80px */
+  width: auto;
+  max-width: 92%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.85));
+}
+
+.bin-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 4px #000, 0 0 6px #000;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ── Printers volando ────────────────────────────────────────────── */
+
+.fly-printer {
+  position: absolute;
+  left: 13%;   /* desde el triajista hacia el destino */
+  top: 50%;
+  width: 3.5%;
+  height: auto;
+  image-rendering: pixelated;
+  z-index: 200;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 8px rgba(123, 162, 247, 0.9));
+  transition:
+    left    1.3s cubic-bezier(0.4, 0, 0.2, 1),
+    top     1.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.5s ease;
+}
+
+.fly-printer.fly-caso_a {
+  left: 92%;
+  top: 80%;   /* bin Caso A (dólar) — debajo de Residuos */
+  opacity: 0.9;
+}
+
+.fly-printer.fly-terminal {
+  left: 91%;
+  top: 88%;
+  opacity: 0.9;
+}
+
+.fly-printer.fly-caso_b {
+  left: 22%;
+  top: 50%;
+  opacity: 0.9;
+}
+
+/* ── Ticker de evento (barra inferior) ───────────────────────────── */
+
+/* ── Barra de día (encima del ticker) ────────────────────────────── */
+
+.anim-day-bar {
+  position: absolute;
+  bottom: 34px;          /* justo sobre el ticker */
+  left: 0;
+  right: 0;
+  z-index: 159;
+  height: 28px;
+  background: rgba(6, 16, 36, 0.82);
+  border-top: 1px solid rgba(44, 94, 162, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.adb-day      { font-size: 11px; color: #c8d8f0; }
+.adb-day strong { color: #fff; }
+.adb-sep      { color: #2c4a70; font-size: 11px; }
+.adb-weekday  { font-size: 11px; font-weight: 600; color: #7bc8f5; }
+.adb-date     { font-size: 11px; color: #89a8de; }
+.adb-peak     { font-size: 10px; color: #f2c744; margin-left: 4px; }
+.adb-susp     { font-size: 10px; color: #e05050; margin-left: 4px; }
+.adb-holiday  { font-size: 10px; color: #f2c744; margin-left: 4px; }
+.adb-idle     { font-size: 10px; color: #2c4a70; font-style: italic; }
+
+/* ── Ticker de evento (barra inferior) ───────────────────────────── */
+
+.anim-ticker {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 160;
+  background: rgba(4, 11, 26, 0.92);
+  border-top: 1px solid rgba(44, 94, 162, 0.5);
+  padding: 0 14px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+}
+
+.atk-idle {
+  color: #3d5a80;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.anim-ticker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  border-left: 3px solid rgba(89, 140, 230, 0.5);
+  padding-left: 8px;
+  width: 100%;
+  color: #c8d8f0;
+  flex-wrap: wrap;
+}
+
+.atk-icon   { font-size: 13px; flex-shrink: 0; }
+.atk-day    { color: #89a8de; font-size: 10px; white-space: nowrap; flex-shrink: 0; }
+.atk-time   { color: #5a7eaa; font-size: 10px; white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.atk-phase  {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #7ba8d8;
+  background: rgba(44, 94, 162, 0.25);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.atk-type    { font-size: 11px; flex-shrink: 0; }
+.atk-weight  { color: #5a7eaa; font-size: 10px; flex-shrink: 0; }
+.atk-seq     { color: #5a7eaa; font-size: 10px; min-width: 26px; text-align: right; flex-shrink: 0; }
+.atk-seq--empty { min-width: 26px; flex-shrink: 0; }
+.atk-result  { font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.atk-revenue { color: #2ad46f; font-size: 11px; font-weight: 700; margin-left: auto; flex-shrink: 0; }
+.atk-mats    { color: #89a8de; font-size: 10px; }
+.atk-label   { color: #c8d8f0; font-size: 11px; }
+
+/* ── Impresora sobre la mesa de desguace ─────────────────────────── */
+
+.table-printer {
+  position: absolute;
+  left: var(--tpx);
+  top:  var(--tpy);
+  /*
+   * El operario tiene transform: translate(-50%, -90%) y la mesa translateY(-20%).
+   * La superficie visible de la mesa está ~40% de la propia altura del sprite de
+   * impresora por encima del punto stationY → translate(-50%, -42%) la deja
+   * posada sobre el tablero de trabajo.
+   */
+  transform: translate(-50%, -42%);
+  height: 6vh;
+  width:  auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.95));
+  z-index: var(--tpz, 11);
+  pointer-events: none;
+  animation: printer-land 0.35s ease;
+}
+
+@keyframes printer-land {
+  from { transform: translate(-50%, -60%); opacity: 0.3; }
+  to   { transform: translate(-50%, -42%); opacity: 1;   }
+}
+
+/* Los fantasmas aparecen suavemente sin el salto de la animación de aterrizaje */
+.table-printer--phantom {
+  animation: phantom-appear 0.5s ease;
+  opacity: 0.88;
+}
+
+@keyframes phantom-appear {
+  from { opacity: 0; transform: translate(-50%, -50%); }
+  to   { opacity: 0.88; transform: translate(-50%, -42%); }
+}
+
+/* ── Overlay estado de planta ────────────────────────────────────── */
+
+.plant-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Fondo negro semi-transparente: el galpon sigue visible detrás */
+  background: rgba(0, 0, 0, 0.72);
+  animation: overlay-fadein 0.4s ease;
+}
+
+@keyframes overlay-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.plant-overlay-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 48px;
+  background: rgba(4, 14, 30, 0.92);
+  border-radius: 12px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+.plant-overlay-status {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.plant-overlay--open .plant-overlay-status {
+  color: #2ad46f;
+  text-shadow: 0 0 20px rgba(42, 212, 111, 0.55);
+}
+
+.plant-overlay--closed .plant-overlay-status {
+  color: #e05050;
+  text-shadow: 0 0 20px rgba(224, 80, 80, 0.55);
+}
+
+.plant-overlay-day {
+  font-size: 13px;
+  color: #5a7eaa;
+  letter-spacing: 0.06em;
+}
+
+.plant-overlay-date {
+  font-size: 20px;
+  font-weight: 600;
+  color: #c8d8f0;
+  letter-spacing: 0.03em;
+}
+
+.plant-overlay-reason {
+  font-size: 13px;
+  color: #89a8de;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* ── Strip económico (centro superior) ──────────────────────────────── */
+
+.econ-strip {
+  position: absolute;
+  top: 2%;
+  left: 10%;
+  right: 16%;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  background: rgba(0, 8, 18, 0.82);
+  border: 1px solid rgba(44, 94, 162, 0.35);
+  border-radius: 6px;
+  padding: 5px 14px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.4s;
+}
+
+.econ-strip--idle {
+  opacity: 0.4;
+}
+
+.econ-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 12px;
+  min-width: 72px;
+}
+
+.econ-lbl {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #4a6a90;
+  white-space: nowrap;
+}
+
+.econ-val {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.econ-val--bold {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.econ-pos { color: #4ade80; text-shadow: 0 0 6px rgba(74, 222, 128, 0.35); }
+.econ-neg { color: #f87171; text-shadow: 0 0 6px rgba(248, 113, 113, 0.35); }
+
+.econ-sep {
+  width: 1px;
+  height: 28px;
+  background: rgba(44, 94, 162, 0.3);
+  flex-shrink: 0;
+}
+
+.econ-sep--thick {
+  width: 1px;
+  background: rgba(44, 94, 162, 0.55);
+}
+
+/* ── Overlay FIN DE JORNADA ──────────────────────────────────────── */
+
+.plant-overlay--dayend {
+  /* No oscurece el fondo — se ve la actividad del galpon detrás */
+  background: transparent;
+  pointer-events: none;
+}
+
+.plant-overlay--dayend .plant-overlay-card {
+  gap: 8px;
+  padding: 22px 44px;
+  background: rgba(4, 14, 30, 0.93);
+  border: 1px solid rgba(242, 199, 68, 0.25);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.plant-overlay--dayend .plant-overlay-status {
+  color: #f2c744;
+  text-shadow: 0 0 20px rgba(242, 199, 68, 0.45);
+}
+
+.dayend-net {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+}
+
+.dayend-net-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.dayend-net-value {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+
+.dayend-net--pos .dayend-net-value {
+  color: #4ade80;
+  text-shadow: 0 0 16px rgba(74, 222, 128, 0.5);
+}
+
+.dayend-net--neg .dayend-net-value {
+  color: #f87171;
+  text-shadow: 0 0 16px rgba(248, 113, 113, 0.5);
+}
+
+/* ── Triajista trabajando ─────────────────────────────────────────── */
+
+.triage-working .emp-spr {
+  filter:
+    drop-shadow(0 0 10px rgba(100, 180, 255, 0.85))
+    drop-shadow(1px 3px 5px rgba(0, 0, 0, 0.9));
+}

@@ -64,6 +64,9 @@ public class SimulationState {
     // ── Estaciones de trabajo ─────────────────────────────────────────────────
     private final List<StationState> stations;
 
+    // ── Triaje pendiente (carry-over entre días hábiles) ──────────────────────
+    private int triagePendingCount;
+
     // ── Métricas del día (se resetean en cada tick) ────────────────────────────
     private int    dailyArrivals;
     private int    dailyCaseA;
@@ -73,7 +76,7 @@ public class SimulationState {
     private double dailyCaseARevenue;
     private double dailyMaterialRevenue;
     private double dailyLaborCost;
-    private double dailySuspensionCost;
+    private double dailyOpportunityInfo;    // ingreso potencial perdido por clausura (solo informativo)
     private double dailyNetProfit;
 
     // ── Contadores acumulados ─────────────────────────────────────────────────
@@ -144,16 +147,17 @@ public class SimulationState {
     public void advanceDay() {
         currentDay++;
         // Offset +3: día 1 = Jueves (1 Enero 2026). Sin offset sería Lunes.
-        dayOfWeek    = ((currentDay - 1 + 3) % 7) + 1;  // 1=Lunes … 7=Domingo
-        currentMonth = dayOfYearToMonth(currentDay);
-        dayOfMonth   = currentDay - MONTH_END_DAY[currentMonth - 1];  // 1-based dentro del mes
-        peakMonth    = (currentMonth == 1 || currentMonth == 6
-                     || currentMonth == 7 || currentMonth == 12);
+        dayOfWeek = ((currentDay - 1 + 3) % 7) + 1;  // 1=Lunes … 7=Domingo
 
-        // Feriado: usar posición dentro del año (soporta corridas de 2 años)
+        // dayInYear normaliza el día al rango 1-365 para soportar corridas de 2 años
         int dayInYear = ((currentDay - 1) % 365) + 1;
-        holidayName  = HOLIDAYS.get(dayInYear);
-        workDay      = dayOfWeek <= 5 && holidayName == null;
+        currentMonth  = dayOfYearToMonth(dayInYear);
+        dayOfMonth    = dayInYear - MONTH_END_DAY[currentMonth - 1];  // 1-based dentro del mes
+        peakMonth     = (currentMonth == 1 || currentMonth == 6
+                      || currentMonth == 7 || currentMonth == 12);
+
+        holidayName = HOLIDAYS.get(dayInYear);
+        workDay     = dayOfWeek <= 5 && holidayName == null;
 
         int years = config.getSimulationDurationYears() > 0 ? config.getSimulationDurationYears() : 1;
         completed = currentDay > years * 365;
@@ -161,16 +165,16 @@ public class SimulationState {
 
     /** Resetea las métricas diarias antes de procesar el tick. */
     public void resetDailyMetrics() {
-        dailyArrivals       = 0;
-        dailyCaseA          = 0;
-        dailyTerminalWaste  = 0;
-        dailyCaseB          = 0;
-        dailyDisassembled   = 0;
-        dailyCaseARevenue   = 0.0;
-        dailyMaterialRevenue = 0.0;
-        dailyLaborCost      = 0.0;
-        dailySuspensionCost = 0.0;
-        dailyNetProfit      = 0.0;
+        dailyArrivals            = 0;
+        dailyCaseA               = 0;
+        dailyTerminalWaste       = 0;
+        dailyCaseB               = 0;
+        dailyDisassembled        = 0;
+        dailyCaseARevenue        = 0.0;
+        dailyMaterialRevenue     = 0.0;
+        dailyLaborCost           = 0.0;
+        dailyOpportunityInfo     = 0.0;
+        dailyNetProfit           = 0.0;
         todayEvents.clear();
         eventSeq = 0;
     }

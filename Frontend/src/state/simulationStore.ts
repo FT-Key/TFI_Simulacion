@@ -5,11 +5,33 @@ import type {
   DailySeriesPoint,
   MonthlySeriesPoint,
   PlantSnapshot,
+  SavedReport,
   SimulationConfig,
   SimulationReport,
   StationSnapshot,
 } from '../types/simulation'
 export type { SimulationConfig }
+
+// ── Persistencia de historial ─────────────────────────────────────────────────
+
+const HISTORY_KEY = 'ema-raee-report-history'
+
+function loadHistory(): SavedReport[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY)
+    return raw ? (JSON.parse(raw) as SavedReport[]) : []
+  } catch {
+    return []
+  }
+}
+
+function persistHistory(history: SavedReport[]): void {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history))
+  } catch {
+    // localStorage lleno — ignorar
+  }
+}
 
 const transport = createSimulationTransport()
 
@@ -20,6 +42,26 @@ const transport = createSimulationTransport()
  * el día anterior) y no "contamina" las métricas del día anterior.
  */
 const pendingDaySnapshots = new Map<number, PlantSnapshot>()
+
+// ── Estado global de cola Caso B ──────────────────────────────────────────────
+// Se reinicia al iniciar/resetear la simulación. Persiste entre llamadas a
+// interleaveEvents (días distintos) para mantener la correspondencia correcta
+// entre caseBNum y la posición real en la cola de desguace.
+
+/** Contador global de caseBNum — nunca se reinicia entre días. */
+let globalCaseBCounter = 0
+
+/**
+ * Cola de caseBNums pendientes de desguace, en el mismo orden FIFO que la
+ * disassemblyQueue del backend. El frente del array = dispositivo más antiguo.
+ * interleaveEvents añade los nuevos del día al final y retira los procesados.
+ */
+let pendingDisassemblyNums: number[] = []
+
+function resetCaseBState() {
+  globalCaseBCounter    = 0
+  pendingDisassemblyNums = []
+}
 
 // ── Config por defecto ────────────────────────────────────────────────────────
 
@@ -64,7 +106,7 @@ const createInitialSnapshot = (config: SimulationConfig): PlantSnapshot => ({
   dailyCaseARevenue: 0,
   dailyMaterialRevenue: 0,
   dailyLaborCost: 0,
-  dailySuspensionCost: 0,
+  dailyOpportunityInfo: 0,
   dailyNetProfit: 0,
   totalArrived: 0,
   totalCaseA: 0,
@@ -107,19 +149,20 @@ function applyClockAndCosts(current: PlantSnapshot, incoming: PlantSnapshot): Pl
     suspended:               incoming.suspended,
     suspensionDaysRemaining: incoming.suspensionDaysRemaining,
     totalSuspensions:        incoming.totalSuspensions,
-    // dailySeries y kpis se aplican al FINAL del día (vía pendingSnapshot),
-    // no al inicio, para que el gráfico solo muestre días completados.
-    dailySeries:             current.dailySeries,
+    // dailySeries: se aplica inmediatamente desde el snapshot del backend.
+    // El backend solo agrega el punto del día al final de processTick, por lo que
+    // incoming.dailySeries siempre contiene días completados (no el día en curso).
+    dailySeries:             incoming.dailySeries,
     stations:                incoming.stations,
     kpis:                    incoming.kpis,
     // Costos laborales: fijos para el día, se aplican de inmediato
     dailyLaborCost:          incoming.dailyLaborCost,
-    dailySuspensionCost:     incoming.dailySuspensionCost,
+    dailyOpportunityInfo:    incoming.dailyOpportunityInfo,
     totalLaborCost:          incoming.totalLaborCost,
-    totalOpportunityCost:    incoming.totalOpportunityCost,
+    totalOpportunityCost:    incoming.totalOpportunityCost,  // informativo
     totalLogisticCost:       incoming.totalLogisticCost,
-    // Empezar el día en negativo por los costos (mejorará con cada ingreso revelado)
-    dailyNetProfit:          -(incoming.dailyLaborCost + incoming.dailySuspensionCost),
+    // Empezar el día en negativo por los costos reales (solo salarios; oportunidad es informativa)
+    dailyNetProfit:          -incoming.dailyLaborCost,
     // Mantener la cola desde el estado anterior (se actualiza evento a evento)
     queueSize:               current.queueSize,
     // Llegadas del día: se conocen de inmediato (todos los dispositivos ya ingresaron)
@@ -177,26 +220,29 @@ function applyEventToSnapshot(snapshot: PlantSnapshot, event: DeviceEvent): Plan
     s.materialRecoveredKg = mats
   }
 
-  // Resultado neto del día: ingresos menos costos ya conocidos
-  s.dailyNetProfit = s.dailyCaseARevenue + s.dailyMaterialRevenue
-    - s.dailyLaborCost - s.dailySuspensionCost
+  // Resultado neto del día: ingresos menos costos reales (opportunity es informativa)
+  s.dailyNetProfit = s.dailyCaseARevenue + s.dailyMaterialRevenue - s.dailyLaborCost
 
-  // Utilidad neta acumulada
+  // Utilidad neta acumulada: solo se restan costos reales (salarios + logística)
   s.totalNetProfit = s.totalCaseARevenue + s.totalMaterialRevenue
-    - s.totalLaborCost - s.totalOpportunityCost - s.totalLogisticCost
+    - s.totalLaborCost - s.totalLogisticCost
 
   return s
 }
 
 /**
- * Intercala los eventos de TRIAGE y DESGUACE en orden cronológico simulado
- * y asigna a cada evento su tiempo simulado (minutos desde medianoche) y el día.
+ * Intercala TRIAGE y DESGUACE en orden cronológico y asigna caseBNum GLOBAL
+ * (nunca se reinicia entre días) y workerSlot a cada evento.
  *
- * Tiempos simulados:
- *   - Triage[i]: 08:00 + (floor(i / triageOperators) + 1) × 6 min
- *     → triageOperators clasifican en paralelo: cada 6 min sim terminan triageOperators equipos.
- *   - DESGUACE[j]: 08:00 + tiempo acumulado de la estación a la que fue asignado.
- *     → se simulan activeStations estaciones en paralelo con la misma lógica FIFO del backend.
+ * Cola persistente `pendingDisassemblyNums`:
+ *   - Al entrar, contiene los caseBNums de dispositivos arrastrados de días
+ *     anteriores (carry-overs), en orden FIFO = misma posición en la queue del backend.
+ *   - Se añaden al final los caseBNums de los nuevos CASO_B de hoy.
+ *   - disassemblyEvents[i] se corresponde con pendingDisassemblyNums[i].
+ *   - Al salir, se recorta la cola eliminando los procesados hoy.
+ *
+ * Retorna los eventos ordenados por simTime más el mapa caseBNum → workerSlot
+ * de los dispositivos procesados hoy (para asignar phantoms en ARRIVALS).
  */
 function interleaveEvents(
   triageEvents: DeviceEvent[],
@@ -205,56 +251,89 @@ function interleaveEvents(
   triageOperators: number,
   activeStations: number,
   operatorsPerStation: number,
-): DeviceEvent[] {
-  const SIM_START_MIN = 8 * 60  // 08:00 en minutos desde medianoche
+): { events: DeviceEvent[]; caseBSlotMap: Record<number, number> } {
+  const SIM_START_MIN = 8 * 60
 
-  // Triage: triageOperators operarios en paralelo → cada 6 min sim terminan triageOperators equipos
+  // Carry-overs = dispositivos en cola antes de añadir los nuevos del día
+  const numCarryOvers = pendingDisassemblyNums.length
+
+  // Asignar caseBNums GLOBALES a los nuevos CASO_B de hoy
   const triageWithTime: DeviceEvent[] = triageEvents.map((e, i) => ({
     ...e,
-    simTimeMinutes: SIM_START_MIN + (Math.floor(i / triageOperators) + 1) * 6,
+    simTimeMinutes: SIM_START_MIN + (Math.floor(i / triageOperators) + 1) * 7.5,
+    caseBNum: e.triageResult === 'CASO_B' ? ++globalCaseBCounter : undefined,
     dayNumber,
   }))
 
-  // Desguace: simular estaciones con operarios en paralelo dentro de cada estación.
-  // Cada operario tiene su propio reloj; el dispositivo se asigna al operario libre más temprano
-  // dentro de la estación activa. El cambio de estación sigue la misma lógica FIFO del backend.
-  const stationCapacity = operatorsPerStation * 540  // capacidad total por estación (min/día)
+  // Añadir los nuevos caseBNums al final de la cola persistente
+  triageWithTime
+    .filter((e) => e.triageResult === 'CASO_B' && e.caseBNum != null)
+    .forEach((e) => pendingDisassemblyNums.push(e.caseBNum!))
 
-  // workerTimes[s][op] = minutos acumulados del operario op en la estación s (arranca 08:06)
-  const workerTimes: number[][] = Array.from(
-    { length: activeStations },
-    () => new Array(operatorsPerStation).fill(6),
-  )
+  // Tiempos de salida del triaje para los nuevos CASO_B (índice dentro de hoy)
+  const caseBTriage    = triageWithTime.filter((e) => e.triageResult === 'CASO_B')
+  const caseBExitRelMin = caseBTriage.map((e) => (e.simTimeMinutes ?? SIM_START_MIN) - SIM_START_MIN)
 
-  let stationIdx = 0
-  let remaining = stationCapacity
+  const totalOps = activeStations * operatorsPerStation
+  const opTime: number[] = new Array(totalOps).fill(0)
 
-  const disassemblyWithTime: DeviceEvent[] = disassemblyEvents.map((e) => {
+  const disassemblyWithTime: DeviceEvent[] = disassemblyEvents.map((e, caseBIdx) => {
     const procTime = e.processingTimeMinutes ?? 55
-    // Si no cabe en la estación actual, pasar a la siguiente (mismo criterio que el backend)
-    if (remaining < procTime && stationIdx < activeStations - 1) {
-      stationIdx++
-      remaining = stationCapacity
-    }
-    remaining -= procTime
 
-    // Asignar al operario más libre de esta estación
-    const ops = workerTimes[stationIdx]
-    const minTime = Math.min(...ops)
-    const opIdx = ops.indexOf(minTime)
-    ops[opIdx] += procTime
+    // Carry-overs ya pasaron por triaje en días anteriores → triageExitRel = 0.
+    // Los nuevos del día deben esperar a que su triaje termine.
+    const triageExitRel = caseBIdx < numCarryOvers
+      ? 0
+      : caseBExitRelMin[caseBIdx - numCarryOvers] ?? 0
+
+    // caseBNum desde la cola persistente (posición 1:1 con la queue del backend)
+    const caseBNum = pendingDisassemblyNums[caseBIdx]
+
+    let bestOp    = 0
+    let bestStart = Infinity
+    for (let i = 0; i < totalOps; i++) {
+      const start = Math.max(opTime[i], triageExitRel)
+      if (start + procTime <= 540 && start < bestStart) {
+        bestStart = start
+        bestOp    = i
+      }
+    }
+    if (bestStart === Infinity) {
+      bestOp    = opTime.indexOf(Math.min(...opTime))
+      bestStart = Math.max(opTime[bestOp], triageExitRel)
+    }
+    opTime[bestOp] = bestStart + procTime
 
     return {
       ...e,
-      simTimeMinutes: SIM_START_MIN + ops[opIdx],
+      simTimeMinutes: SIM_START_MIN + opTime[bestOp],
+      caseBNum,
+      workerSlot: bestOp,
       dayNumber,
     }
   })
 
-  // Unir y ordenar por tiempo simulado para que el log respete el orden cronológico
-  return [...triageWithTime, ...disassemblyWithTime].sort(
+  // Retirar los dispositivos procesados hoy de la cola persistente
+  pendingDisassemblyNums = pendingDisassemblyNums.slice(disassemblyEvents.length)
+
+  // Mapa caseBNum → workerSlot para todos los procesados hoy (carry-overs + nuevos)
+  const caseBSlotMap: Record<number, number> = {}
+  disassemblyWithTime.forEach((e) => {
+    if (e.caseBNum != null && e.workerSlot != null) caseBSlotMap[e.caseBNum] = e.workerSlot
+  })
+
+  // Propagar workerSlot al TRIAGE CASO_B correspondiente (solo nuevos procesados hoy)
+  const triageAnnotated = triageWithTime.map((e) =>
+    e.triageResult === 'CASO_B' && e.caseBNum != null && caseBSlotMap[e.caseBNum] != null
+      ? { ...e, workerSlot: caseBSlotMap[e.caseBNum] }
+      : e
+  )
+
+  const events = [...triageAnnotated, ...disassemblyWithTime].sort(
     (a, b) => (a.simTimeMinutes ?? 0) - (b.simTimeMinutes ?? 0),
   )
+
+  return { events, caseBSlotMap }
 }
 
 // ── Helpers de informe ───────────────────────────────────────────────────────
@@ -354,6 +433,8 @@ interface SimulationState {
   pendingSnapshot: PlantSnapshot | null
   isRunning: boolean
   isPaused: boolean
+  /** Se incrementa en cada reset para que la animación pueda limpiar su estado. */
+  resetKey: number
   error: string | null
   eventQueue: DeviceEvent[]
   visibleEvents: DeviceEvent[]
@@ -373,6 +454,10 @@ interface SimulationState {
   report: SimulationReport | null
   isComputingReport: boolean
 
+  reportHistory: SavedReport[]
+  deleteReportFromHistory: (id: string) => void
+  clearReportHistory: () => void
+
   initialize: () => () => void
   startSimulation: (config?: SimulationConfig) => Promise<void>
   stopSimulation: () => Promise<void>
@@ -383,7 +468,7 @@ interface SimulationState {
   revealNextEvent: () => void
   /** Detiene la animación y llama al backend /compute para generar el informe al instante. */
   computeReport: () => Promise<void>
-  /** Descarta el informe y vuelve al dashboard. */
+  /** Descarta el informe, resetea la simulación y vuelve al dashboard. */
   dismissReport: () => void
 }
 
@@ -393,6 +478,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   pendingSnapshot:     null,
   isRunning:           false,
   isPaused:            false,
+  resetKey:            0,
   error:               null,
   eventQueue:          [],
   visibleEvents:       [],
@@ -400,6 +486,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   revealPausedUntil:   null,
   report:              null,
   isComputingReport:   false,
+  reportHistory:       loadHistory(),
 
   initialize: () =>
     transport.subscribe((incoming) => {
@@ -409,18 +496,26 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       // Separar por tipo de evento
       const triageEvents      = allEvents.filter((e) => e.eventType === 'TRIAGE')
       const disassemblyEvents = allEvents.filter((e) => e.eventType === 'DESGUACE')
-      const suspDayEvents     = allEvents.filter((e) => e.eventType === 'SUSPENSION_DAY')
+      const triage_summary    = allEvents.filter((e) => e.eventType === 'TRIAGE_SUMMARY')
+      const oppInfoEvents     = allEvents.filter((e) => e.eventType === 'OPPORTUNITY_INFO')
       const suspEndEvents     = allEvents.filter((e) => e.eventType === 'SUSPENSION_END')
 
       const dayNum = incoming.currentDay
-      const tagSusp = (e: DeviceEvent, simMin: number): DeviceEvent =>
+      const tagAt = (e: DeviceEvent, simMin: number): DeviceEvent =>
         ({ ...e, dayNumber: dayNum, simTimeMinutes: simMin })
 
-      // Suspensión al inicio del día, desguace intercalado, cargo logístico al final
+      // Calcular el tiempo sim al final del triaje (para ubicar el resumen después)
+      const triageEndMin = 8 * 60 + (Math.ceil(triageEvents.length / triageOperators)) * 7.5
+
+      // Oportunidad info al inicio del día, resumen de triaje al final del triaje, cargo logístico al final
+      const { events: interleavedCore, caseBSlotMap } = interleaveEvents(
+        triageEvents, disassemblyEvents, dayNum, triageOperators, activeStations, operatorsPerStation,
+      )
       const interleaved: DeviceEvent[] = [
-        ...suspDayEvents.map((e) => tagSusp(e, 8 * 60)),
-        ...interleaveEvents(triageEvents, disassemblyEvents, dayNum, triageOperators, activeStations, operatorsPerStation),
-        ...suspEndEvents.map((e) => tagSusp(e, 17 * 60)),
+        ...oppInfoEvents.map((e) => tagAt(e, 8 * 60)),
+        ...interleavedCore,
+        ...triage_summary.map((e)  => tagAt(e, triageEndMin)),
+        ...suspEndEvents.map((e)   => tagAt(e, 17 * 60)),
       ]
 
       // ── Intervalo adaptativo ───────────────────────────────────────────────
@@ -447,8 +542,12 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         workDay:        incoming.workDay,
         holidayName:    incoming.holidayName,
         // suspended = true si la planta estaba bajo clausura AL INICIO del día
-        // (dailySuspensionCost > 0 cubre el último día donde suspended ya es false)
-        suspended:      incoming.suspended || incoming.dailySuspensionCost > 0,
+        // (dailyOpportunityInfo > 0 cubre el último día donde suspended ya es false)
+        suspended:      incoming.suspended || incoming.dailyOpportunityInfo > 0,
+        dayOfMonth:     incoming.dayOfMonth,
+        currentMonth:   incoming.currentMonth,
+        // Mapa caseBNum → workerSlot para asignar phantoms a carry-overs al inicio del día
+        caseBSlotMap:   Object.keys(caseBSlotMap).length > 0 ? caseBSlotMap : undefined,
       }
       const dayEndSentinel: DeviceEvent = {
         seq:            -2,
@@ -456,6 +555,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         dayNumber:      incoming.currentDay,
         simTimeMinutes: 17 * 60,
         workDay:        incoming.workDay,
+        suspended:      incoming.suspended || incoming.dailyOpportunityInfo > 0,
       }
 
       // Guardar el snapshot del día para aplicarlo cuando ARRIVALS sea sacado de la cola.
@@ -481,6 +581,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     const { isRunning } = get()
     if (isRunning) return
     const cfg = overrideConfig ?? get().config
+    resetCaseBState()
     set({
       ...(overrideConfig ? { config: overrideConfig } : {}),
       snapshot:          createInitialSnapshot(cfg),
@@ -497,6 +598,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   stopSimulation: async () => {
     await transport.stopRun()
     pendingDaySnapshots.clear()
+    resetCaseBState()
     set({ isRunning: false, isPaused: false, error: null, eventQueue: [], pendingSnapshot: null, revealPausedUntil: null })
   },
 
@@ -521,8 +623,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   },
 
   resetSimulation: async () => {
-    const { config, isRunning } = get()
+    const { config, isRunning, resetKey } = get()
     pendingDaySnapshots.clear()
+    resetCaseBState()
     set({
       snapshot:        createInitialSnapshot(config),
       pendingSnapshot: null,
@@ -530,6 +633,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       visibleEvents:   [],
       isPaused:        false,
       revealPausedUntil: null,
+      resetKey:        resetKey + 1,
     })
     if (isRunning) {
       await transport.stopRun()
@@ -555,9 +659,12 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         // Auto-trigger: simulación completada → mostrar informe tras 2 s
         if (wasCompleted) {
           setTimeout(() => {
-            const { snapshot: final, config } = get()
+            const { snapshot: final, config, reportHistory } = get()
             const report = buildReportFromSnapshot(final, config, 'run')
-            set({ report })
+            const entry: SavedReport = { id: Date.now().toString(), savedAt: new Date().toISOString(), report }
+            const newHistory = [entry, ...reportHistory]
+            persistHistory(newHistory)
+            set({ report, reportHistory: newHistory })
           }, 2_000)
         }
       }
@@ -583,11 +690,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     }
 
     // ── Evento especial: fin de jornada ──────────────────────────────────────
-    // La pausa de 10 s entre días sólo aplica a jornadas laborables a 1×.
-    // Días no laborables (fin de semana / feriado): sin pausa, pasan de inmediato.
-    // Días hábiles: 5 s fijos sin importar la velocidad, para poder pausar y revisar.
+    // Días hábiles: pausa de 5 s siempre (todas las velocidades).
+    // Días no laborables (finde / feriado):
+    //   - A 1×: pausa de 5 s para que el día sea visible en la animación.
+    //   - Otras velocidades: sin pausa, pasan de inmediato.
     if (next.eventType === 'DAY_END') {
-      const pauseMs = next.workDay !== false ? 5_000 : 0
+      const isAnimMode = config.tickMs === 1_620_000 || config.tickMs === 162_000
+      const pauseMs = next.suspended          ? 0       // clausura: sin pausa entre días
+                    : next.workDay !== false  ? 6_000
+                    : isAnimMode             ? 6_000
+                    : 0
       set({
         eventQueue:        rest,
         visibleEvents:     [...visibleEvents, next].slice(-120),
@@ -611,6 +723,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     // Detener la animación actual si está corriendo
     await transport.stopRun().catch(() => {})
     pendingDaySnapshots.clear()
+    resetCaseBState()
     set({ isRunning: false, isPaused: false, eventQueue: [], revealPausedUntil: null })
 
     try {
@@ -644,13 +757,42 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         monthlySeries:       buildMonthlySeries(data.dailySeries ?? [], config.simulationDurationYears),
         dailySeries:         data.dailySeries ?? [],
       }
-      set({ report, isComputingReport: false })
+      const { reportHistory } = get()
+      const entry: SavedReport = { id: Date.now().toString(), savedAt: new Date().toISOString(), report }
+      const newHistory = [entry, ...reportHistory]
+      persistHistory(newHistory)
+      set({ report, isComputingReport: false, reportHistory: newHistory })
     } catch (err) {
       set({ isComputingReport: false, error: String(err) })
     }
   },
 
   dismissReport: () => {
-    set({ report: null })
+    const { config, resetKey } = get()
+    pendingDaySnapshots.clear()
+    resetCaseBState()
+    set({
+      report:            null,
+      snapshot:          createInitialSnapshot(config),
+      pendingSnapshot:   null,
+      eventQueue:        [],
+      visibleEvents:     [],
+      isPaused:          false,
+      revealPausedUntil: null,
+      isRunning:         false,
+      resetKey:          resetKey + 1,
+    })
+  },
+
+  deleteReportFromHistory: (id: string) => {
+    const { reportHistory } = get()
+    const newHistory = reportHistory.filter((e) => e.id !== id)
+    persistHistory(newHistory)
+    set({ reportHistory: newHistory })
+  },
+
+  clearReportHistory: () => {
+    persistHistory([])
+    set({ reportHistory: [] })
   },
 }))

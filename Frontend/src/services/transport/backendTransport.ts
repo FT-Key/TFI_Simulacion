@@ -11,8 +11,6 @@ const BASE_URL = 'http://localhost:8080'
  *   POST /api/simulations/runs/{id}/stop → detiene corrida
  *   GET  /api/simulations/runs/{id}/stream (text/event-stream) → SSE de PlantSnapshot
  *
- * Para activar: en src/services/transport/index.ts cambiar
- *   MockSimulationTransport → BackendSimulationTransport
  */
 export class BackendSimulationTransport implements SimulationTransport {
   private runId: string | null = null

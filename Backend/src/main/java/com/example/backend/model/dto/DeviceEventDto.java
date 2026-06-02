@@ -45,16 +45,33 @@ public class DeviceEventDto {
     private double aluminumKg;
     private double copperKg;
 
-    // ── Eventos de suspensión (SUSPENSION_DAY / SUSPENSION_END) ───────────
+    // ── Resumen de triaje diario (TRIAGE_SUMMARY) ─────────────────────────
+    /** Equipos nuevos que ingresaron hoy. */
+    private Integer triageNewArrivals;
+    /** Equipos pendientes sin clasificar del día anterior. */
+    private Integer triagePendingFromYesterday;
+    /** Total a clasificar hoy = nuevos + pendientes. */
+    private Integer triageTotalToClassify;
+    /** Cuántos fueron efectivamente clasificados dentro de la jornada. */
+    private Integer triageClassified;
+    /** Cuántos quedaron sin clasificar y pasan al día siguiente. */
+    private Integer triageLeftover;
+
+    // ── Eventos de clausura ────────────────────────────────────────────────
     /**
-     * SUSPENSION_DAY: costo de oportunidad del día (U[$2.8M, $4.2M]).
-     * SUSPENSION_END: cargo logístico fijo ($350 000) al finalizar la clausura.
+     * OPPORTUNITY_INFO: ingreso potencial que se habría obtenido si la planta
+     * hubiera recibido material ese día (solo informativo, NO se descuenta).
      * Null en todos los demás tipos de evento.
+     */
+    private Double opportunityAmount;
+    /**
+     * SUSPENSION_END: cargo logístico fijo ($700 000) al finalizar la clausura.
+     * Null en todos los demás tipos.
      */
     private Double suspensionPenalty;
     /**
-     * SUSPENSION_DAY: días de clausura que quedan ANTES de procesar este día
-     * (7 el primer día, 1 el último). Null en los demás tipos.
+     * OPPORTUNITY_INFO: días de clausura que quedan ANTES de procesar este día.
+     * Null en los demás tipos.
      */
     private Integer suspensionDaysLeft;
 }

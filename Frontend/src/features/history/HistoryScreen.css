@@ -1,0 +1,236 @@
+.history-shell {
+  min-height: 100vh;
+  background: #0f1117;
+  color: #e2e8f0;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+.history-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.5rem 2rem;
+  background: #161b27;
+  border-bottom: 1px solid #2d3748;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.history-eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.25rem;
+}
+
+.history-header h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 0.4rem;
+}
+
+.history-meta {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.history-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.history-back-btn {
+  padding: 0.5rem 1rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.history-back-btn:hover {
+  background: #273548;
+  color: #e2e8f0;
+}
+
+.history-clear-btn {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #7f1d1d55;
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.history-clear-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────────── */
+.history-body {
+  padding: 2rem;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.history-empty {
+  margin-top: 4rem;
+  text-align: center;
+  color: #475569;
+  font-size: 1rem;
+}
+.history-empty-hint {
+  font-size: 0.82rem;
+  color: #374151;
+  margin-top: 0.5rem;
+}
+
+/* ── Lista de tarjetas ───────────────────────────────────────────────────────── */
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Tarjeta individual ──────────────────────────────────────────────────────── */
+.history-card {
+  background: #161b27;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  transition: border-color 0.15s;
+}
+.history-card:hover {
+  border-color: #2d3a55;
+}
+
+.history-card-date {
+  font-size: 0.72rem;
+  color: #64748b;
+  letter-spacing: 0.04em;
+}
+
+.history-card-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* Config badges */
+.history-card-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.hc-badge {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #1e293b;
+  border: 1px solid #2d3748;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+.hc-badge-computed {
+  color: #60a5fa;
+  border-color: #2563eb44;
+  background: #172038;
+}
+
+/* Stats */
+.history-card-stats {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.hc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.hc-stat-label {
+  font-size: 0.68rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.hc-stat-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.hc-stat-net-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pos { color: #4ade80; }
+.neg { color: #f87171; }
+
+/* Actions */
+.history-card-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid #1e293b;
+  padding-top: 0.9rem;
+}
+
+.hc-view-btn {
+  padding: 0.45rem 1.1rem;
+  background: #1e3a5f;
+  border: 1px solid #2563eb55;
+  border-radius: 6px;
+  color: #93c5fd;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.hc-view-btn:hover {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.hc-delete-btn {
+  padding: 0.45rem 0.9rem;
+  background: transparent;
+  border: 1px solid #7f1d1d44;
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.hc-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}

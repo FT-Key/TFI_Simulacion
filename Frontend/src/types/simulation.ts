@@ -94,20 +94,30 @@ export interface DailySeriesPoint {
 export interface DeviceEvent {
   seq: number
   /**
-   * TRIAGE / DESGUACE / SUSPENSION_DAY / SUSPENSION_END: vienen del backend.
-   * ARRIVALS: sintético — anuncia cuántos dispositivos ingresaron al día.
-   * DAY_END:  sintético — cierre de jornada, dispara la pausa entre días.
+   * Tipos del backend: TRIAGE | DESGUACE | TRIAGE_SUMMARY | OPPORTUNITY_INFO | SUSPENSION_END
+   * Tipos sintéticos del frontend: ARRIVALS | DAY_END
    */
-  eventType: 'TRIAGE' | 'DESGUACE' | 'ARRIVALS' | 'DAY_END' | 'SUSPENSION_DAY' | 'SUSPENSION_END'
+  eventType:
+    | 'TRIAGE' | 'DESGUACE'
+    | 'TRIAGE_SUMMARY'
+    | 'OPPORTUNITY_INFO' | 'SUSPENSION_END'
+    | 'ARRIVALS' | 'DAY_END'
 
-  // Datos del equipo
+  // Datos del equipo (TRIAGE y DESGUACE)
   deviceType?: 'INKJET' | 'LASER' | 'INDUSTRIAL'
   weightKg?: number
   processingTimeMinutes?: number
 
-  // Triaje
+  // Triaje individual
   triageResult?: 'CASO_A' | 'TERMINAL' | 'CASO_B'
   caseARevenue?: number
+
+  // Resumen de triaje diario (TRIAGE_SUMMARY)
+  triageNewArrivals?: number
+  triagePendingFromYesterday?: number
+  triageTotalToClassify?: number
+  triageClassified?: number
+  triageLeftover?: number
 
   // Desguace
   materialRevenue?: number
@@ -119,24 +129,51 @@ export interface DeviceEvent {
 
   /**
    * Campos calculados en el frontend (no vienen del backend).
-   * simTimeMinutes: minutos desde medianoche en tiempo simulado cuando ocurre el evento
-   *   (para TRIAGE: cuando termina la clasificación; para DESGUACE: cuando termina el desarmado)
-   * dayNumber: día de simulación al que pertenece este evento
-   * arrivalsCount: sólo para eventType='ARRIVALS', cantidad de dispositivos que ingresaron
+   * simTimeMinutes: minutos desde medianoche en tiempo simulado cuando ocurre el evento.
+   * dayNumber: día de simulación al que pertenece este evento.
+   * arrivalsCount: sólo para ARRIVALS, cantidad de dispositivos que ingresaron.
    */
   simTimeMinutes?: number
   dayNumber?: number
   arrivalsCount?: number
   /** true = día laborable (L-V y no feriado), false = fin de semana / feriado */
   workDay?: boolean
-  /** Nombre del feriado nacional si aplica, undefined si es día normal o fin de semana */
+  /** Nombre del feriado nacional si aplica. */
   holidayName?: string
-  /** true si el día es de clausura (planta suspendida). Solo en sentinel ARRIVALS. */
+  /** true si el día es de clausura. Solo en sentinel ARRIVALS. */
   suspended?: boolean
-  /** SUSPENSION_DAY: costo de oportunidad del día. SUSPENSION_END: cargo logístico $350 000. */
+  /** Día del mes (1-31). Solo en sentinel ARRIVALS. */
+  dayOfMonth?: number
+  /** Mes del año (1-12). Solo en sentinel ARRIVALS. */
+  currentMonth?: number
+  /**
+   * OPPORTUNITY_INFO: ingreso potencial perdido por clausura (solo informativo, NO se resta).
+   * SUSPENSION_END: cargo logístico fijo ($700 000) al finalizar la clausura.
+   */
+  opportunityAmount?: number
   suspensionPenalty?: number
-  /** SUSPENSION_DAY: días de clausura restantes antes de este día (7 el primero, 1 el último). */
+  /** OPPORTUNITY_INFO: días de clausura restantes antes de este día (7 el primero, 1 el último). */
   suspensionDaysLeft?: number
+  /**
+   * TRIAGE CASO_B y su DESGUACE: número secuencial GLOBAL (no se reinicia entre días).
+   * Permite identificar unívocamente cada dispositivo a lo largo de toda la simulación.
+   */
+  caseBNum?: number
+  /** DESGUACE: índice global del operario asignado (0 = op0 estación0, 1 = op1 estación0, 2 = op0 estación1, …). */
+  workerSlot?: number
+  /**
+   * Solo en eventos ARRIVALS de días laborables.
+   * Mapea caseBNum → workerSlot para todos los dispositivos procesados hoy,
+   * incluyendo carry-overs de días anteriores. Permite asignar slots a phantoms
+   * al inicio de la jornada sin necesidad de anticipar eventos DESGUACE.
+   */
+  caseBSlotMap?: Record<number, number>
+}
+
+export interface SavedReport {
+  id: string
+  savedAt: string  // ISO string
+  report: SimulationReport
 }
 
 export interface PlantSnapshot {
@@ -166,7 +203,7 @@ export interface PlantSnapshot {
   dailyCaseARevenue: number
   dailyMaterialRevenue: number
   dailyLaborCost: number
-  dailySuspensionCost: number
+  dailyOpportunityInfo: number  // ingreso potencial perdido por clausura (solo informativo)
   dailyNetProfit: number
 
   // Acumulados

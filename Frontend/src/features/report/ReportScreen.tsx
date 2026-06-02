@@ -4,6 +4,7 @@ import './ReportScreen.css'
 interface Props {
   report: SimulationReport
   onDismiss: () => void
+  backLabel?: string
 }
 
 const ARS = (n: number) =>
@@ -20,7 +21,7 @@ const MONTH_FULL = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 
-export function ReportScreen({ report, onDismiss }: Props) {
+export function ReportScreen({ report, onDismiss, backLabel = '← Volver al dashboard' }: Props) {
   const {
     config, source,
     totalArrived, totalCaseA, totalTerminalWaste, totalCaseB, totalDisassembled, totalSuspensions,
@@ -30,7 +31,7 @@ export function ReportScreen({ report, onDismiss }: Props) {
   } = report
 
   const totalRevenue = totalCaseARevenue + totalMaterialRevenue
-  const totalCost    = totalLaborCost + totalOpportunityCost + totalLogisticCost
+  const totalCost    = totalLaborCost + totalLogisticCost  // opportunity es informativo, no se resta
   const totalOps     = config.triageOperators + config.activeStations * config.operatorsPerStation
 
   // Para barras de la tabla mensual
@@ -51,7 +52,7 @@ export function ReportScreen({ report, onDismiss }: Props) {
           </p>
         </div>
         <button type="button" className="report-back-btn" onClick={onDismiss}>
-          ← Volver al dashboard
+          {backLabel}
         </button>
       </header>
 
@@ -66,7 +67,7 @@ export function ReportScreen({ report, onDismiss }: Props) {
             <KpiCard label="Residuo terminal"    value={totalTerminalWaste.toLocaleString('es-AR')} sub={PCT(kpis?.terminalWastePct ?? 0)} color="warn" />
             <KpiCard label="Desarmados"          value={totalDisassembled.toLocaleString('es-AR')} sub={PCT(kpis?.disassemblyPct ?? 0)} />
             <KpiCard label="Cola promedio"       value={PCT(kpis?.queueUtilizationPct ?? 0)}  sub="utilización / 250" />
-            <KpiCard label="Suspensiones"        value={String(totalSuspensions)} color={totalSuspensions > 0 ? 'warn' : 'ok'} />
+            <KpiCard label="Clausuras"            value={String(totalSuspensions)} sub="eventos · 7 días c/u" color={totalSuspensions > 0 ? 'warn' : 'ok'} />
           </div>
         </section>
 
@@ -97,10 +98,6 @@ export function ReportScreen({ report, onDismiss }: Props) {
                 <span className="neg">{ARS(totalLaborCost)}</span>
               </div>
               <div className="economy-row">
-                <span>Costo de oportunidad</span>
-                <span className="neg">{ARS(totalOpportunityCost)}</span>
-              </div>
-              <div className="economy-row">
                 <span>Cargos logísticos</span>
                 <span className="neg">{ARS(totalLogisticCost)}</span>
               </div>
@@ -118,6 +115,12 @@ export function ReportScreen({ report, onDismiss }: Props) {
               <p className="net-hint">
                 {totalNetProfit >= 0 ? 'Operación rentable' : 'Operación deficitaria'}
               </p>
+              {totalOpportunityCost > 0 && (
+                <div className="economy-row opportunity-info-row">
+                  <span>Ingreso potencial no percibido (informativo)</span>
+                  <span className="info">{ARS(totalOpportunityCost)}</span>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -165,7 +168,7 @@ export function ReportScreen({ report, onDismiss }: Props) {
                 <tr>
                   <th>Mes</th>
                   <th>Días háb.</th>
-                  <th>Clausura</th>
+                  <th>Clausura<br/><span style={{fontSize:'10px',opacity:.6}}>días háb.</span></th>
                   <th>Llegaron</th>
                   <th>Caso A</th>
                   <th>Terminal</th>
@@ -174,7 +177,7 @@ export function ReportScreen({ report, onDismiss }: Props) {
                   <th>Ingresos</th>
                   <th>Costos</th>
                   <th>Resultado</th>
-                  <th className="bar-col">Resultado (visual)</th>
+                  <th className="bar-col">Comparativo<br/><span style={{fontSize:'10px',opacity:.6}}>vs. peor mes</span></th>
                 </tr>
               </thead>
               <tbody>

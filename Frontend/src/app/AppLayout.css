@@ -32,6 +32,44 @@
   font-weight: 600;
 }
 
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.history-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid #1a3260;
+  border-radius: 6px;
+  color: #5a7ab0;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.history-nav-btn:hover {
+  background: rgba(123, 162, 247, 0.08);
+  color: #a0c4ff;
+  border-color: #2a4a80;
+}
+
+.history-nav-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #2a4a80;
+  color: #93c5fd;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .status-pill {
   font-size: 12px;
   padding: 4px 12px;
@@ -60,6 +98,70 @@
 }
 
 .content-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid #1a3260;
+  background: rgba(8, 18, 35, 0.7);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  padding: 5px 18px;
+  border: 1px solid #1a3260;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #5a7ab0;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  position: relative;
+  bottom: -1px;
+}
+
+.tab-btn:hover:not(:disabled) {
+  background: rgba(123, 162, 247, 0.08);
+  color: #a0c4ff;
+}
+
+.tab-btn.tab-active {
+  background: rgba(8, 18, 35, 0.9);
+  color: #dce8ff;
+  border-color: #2a4a80;
+  border-bottom-color: transparent;
+}
+
+.tab-btn.tab-locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tab-lock-badge {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #3a5a88;
+  background: rgba(123, 162, 247, 0.08);
+  border: 1px solid #1a3260;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.tab-panel {
   flex: 1;
   overflow: hidden;
   display: flex;

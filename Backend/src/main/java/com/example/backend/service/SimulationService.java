@@ -252,7 +252,7 @@ public class SimulationService {
                     stopRun(runId);
                     return;
                 }
-            } while (!snapshot.isWorkDay() && !pausedRuns.contains(runId));
+            } while ((!snapshot.isWorkDay() || snapshot.isSuspended()) && !pausedRuns.contains(runId));
 
         } catch (Exception e) {
             log.error("Error en tick de corrida {}: {}", runId, e.getMessage(), e);

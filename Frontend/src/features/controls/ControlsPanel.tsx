@@ -63,7 +63,7 @@ export function ControlsPanel() {
 
   // Costo laboral diario estimado (preview en tiempo real)
   const dailyLaborPreview =
-    (draft.triageOperators + draft.activeStations * draft.operatorsPerStation) * 9 * 3_500
+    (draft.triageOperators + draft.activeStations * draft.operatorsPerStation) * 9 * 5_000
 
   // Capacidad de desensamblaje diaria estimada (en dispositivos)
   const avgProcMin = 0.30 * 49 + 0.50 * 55 + 0.20 * 71.5   // ~57.5 min promedio ponderado
@@ -84,7 +84,7 @@ export function ControlsPanel() {
         value={draft.triageOperators}
         min={LIMITS.triageOperators.min}
         max={LIMITS.triageOperators.max}
-        hint="Clasifican equipos al llegar. Costo: 9 h × $3 500/h c/u."
+        hint="Clasifican equipos al llegar. Costo: 9 h × $5 000/h c/u."
         onChange={(v) => setDraft((p) => ({ ...p, triageOperators: v }))}
         disabled={isRunning}
       />

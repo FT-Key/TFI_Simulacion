@@ -44,9 +44,9 @@ public class PlantSnapshotDto {
     private int    dailyDisassembled;
     private double dailyCaseARevenue;    // ARS
     private double dailyMaterialRevenue; // ARS
-    private double dailyLaborCost;       // ARS
-    private double dailySuspensionCost;  // ARS (costo de oportunidad del día de clausura)
-    private double dailyNetProfit;       // ARS
+    private double dailyLaborCost;        // ARS
+    private double dailyOpportunityInfo; // ARS potencial perdido por clausura (solo informativo, no se resta)
+    private double dailyNetProfit;        // ARS
 
     // ── Acumulados desde el inicio de la corrida ──────────────────────────────
     private int    totalArrived;
@@ -57,8 +57,8 @@ public class PlantSnapshotDto {
     private double totalCaseARevenue;    // ARS
     private double totalMaterialRevenue; // ARS
     private double totalLaborCost;       // ARS
-    private double totalOpportunityCost; // ARS (suma de costos de oportunidad por suspensiones)
-    private double totalLogisticCost;    // ARS (cargo fijo $350 000 por cada suspensión)
+    private double totalOpportunityCost; // ARS potencial acumulado no percibido durante clausuras (informativo)
+    private double totalLogisticCost;    // ARS (cargo fijo $700 000 por cada suspensión)
     private double totalNetProfit;       // ARS = ingresos - todos los costos
 
     // ── KPIs ──────────────────────────────────────────────────────────────────

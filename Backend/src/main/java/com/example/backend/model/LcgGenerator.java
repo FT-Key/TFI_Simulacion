@@ -150,4 +150,11 @@ public class LcgGenerator {
         return mean + stdDev * z;
     }
 
+    /** Exponencial con media {@code mean} via transformación inversa: −mean × ln(U). */
+    public double nextExponential(double mean) {
+        double u = next();
+        if (u <= 0) u = 1e-10;
+        return -mean * Math.log(u);
+    }
+
 }

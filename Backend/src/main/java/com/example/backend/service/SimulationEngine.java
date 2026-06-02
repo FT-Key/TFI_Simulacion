@@ -16,17 +16,18 @@ import java.util.*;
  *
  * Flujo de cada día hábil normal
  *   1. Llegadas  → U[35,45] normales | U[50,70] meses pico (ene,jun,jul,dic)
- *   2. Triaje    → 15% Caso A (reventa) | 8.5% residuo terminal | 76.5% Caso B (desguace)
- *   3. Chequeo suspensión: cola ≥ 250 → clausura de 7 días calendario
+ *   2. Triaje    → Exp(7.5 min)/unidad | 15% Caso A | 8.5% residuo terminal | 76.5% Caso B
+ *                  Dispositivos no alcanzados en la jornada → cola de triaje pendiente (día siguiente)
+ *   3. Chequeo suspensión: cola desguace ≥ 250 → clausura de 7 días calendario
  *   4. Desensamblaje multicanal en paralelo (N estaciones × M ops × 540 min)
  *   5. Recuperación de materiales (precios ARS)
  *   6. Costos laborales: (ops_triaje + N×M) × 9 h × $3 500/h
  *
  * Suspensión (7 días calendario)
- *   - Sin llegadas ni triaje
+ *   - Sin llegadas ni triaje; cola de triaje pendiente se congela
  *   - Estaciones trabajan a máxima capacidad en días hábiles
- *   - Costo de oportunidad diario: U[$2 800 000, $4 200 000]
- *   - Cargo fijo al finalizar: $350 000
+ *   - Ingreso potencial diario: U[$2 800 000, $4 200 000] — solo informativo, NO se resta
+ *   - Cargo fijo al finalizar: $700 000
  */
 @Slf4j
 @Service
@@ -41,14 +42,17 @@ public class SimulationEngine {
     private static final double COST_PELIGROSO  = 1_200.0;  // costo por kg (se resta)
 
     // ── Parámetros de cola y suspensión ───────────────────────────────────────
-    private static final int    MAX_QUEUE              = 250;
-    private static final int    SUSPENSION_DAYS        = 7;
-    private static final double SUSPENSION_FIXED_COST  = 350_000.0;  // ARS al fin de la semana
+    private static final int    MAX_QUEUE             = 250;
+    private static final int    SUSPENSION_DAYS       = 7;
+    private static final double SUSPENSION_FIXED_COST = 700_000.0;  // ARS al fin de la clausura
 
     // ── Laborales ─────────────────────────────────────────────────────────────
-    private static final double HOURLY_WAGE             = 3_500.0;  // ARS/hora/operario
+    private static final double HOURLY_WAGE             = 5_000.0;
     private static final int    WORK_HOURS              = 9;
     private static final int    WORK_MINUTES_PER_OP_DAY = WORK_HOURS * 60;  // 540 min
+
+    // ── Triaje ────────────────────────────────────────────────────────────────
+    private static final double TRIAGE_MEAN_MINUTES = 7.5;  // media de Exp(λ=1/7.5)
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Punto de entrada
@@ -61,6 +65,16 @@ public class SimulationEngine {
         if (state.isCompleted()) {
             log.info("╔══════ SIMULACIÓN COMPLETADA – Día {} ══════╗", state.getCurrentDay() - 1);
             return buildSnapshot(state);
+        }
+
+        // Chequeo de saturación al INICIO del día usando la cola del día anterior.
+        // Así el día que se supera el límite opera normalmente (arrivals + triaje + desguace)
+        // y la clausura comienza recién el día siguiente.
+        if (!state.isSuspended() && state.getDisassemblyQueue().size() >= MAX_QUEUE) {
+            state.setSuspended(true);
+            state.setSuspensionDaysRemaining(SUSPENSION_DAYS);
+            log.warn("  !! COLA SATURADA (arrastre del día anterior): {} ≥ {} → CLAUSURA de {} días activada",
+                    state.getDisassemblyQueue().size(), MAX_QUEUE, SUSPENSION_DAYS);
         }
 
         log.info("╔══ DÍA {} │ Mes {} │ {} │ {} {} ══╗",
@@ -82,9 +96,9 @@ public class SimulationEngine {
         recalcTotals(state);
         appendDailySeries(state);
 
-        log.info("╚══ Net hoy: ${} | Acumulado: ${} | Cola: {} ══╝",
+        log.info("╚══ Net hoy: ${} | Acumulado: ${} | Cola desguace: {} | Triaje pendiente: {} ══╝",
                 (long) state.getDailyNetProfit(), (long) state.getTotalNetProfit(),
-                state.getDisassemblyQueue().size());
+                state.getDisassemblyQueue().size(), state.getTriagePendingCount());
 
         return buildSnapshot(state);
     }
@@ -95,22 +109,23 @@ public class SimulationEngine {
 
     private void processSuspensionDay(SimulationState state) {
         if (state.isWorkDay()) {
-            // Costo de oportunidad sólo en días hábiles (la planta hubiera trabajado)
+            // Ingreso potencial que se dejó de percibir — SOLO informativo, no se resta
             double opp = state.getRng().nextUniform(2_800_000, 4_200_000);
-            state.setDailySuspensionCost(opp);
+            state.setDailyOpportunityInfo(opp);
             state.setTotalOpportunityCost(state.getTotalOpportunityCost() + opp);
-            log.warn("  CLAUSURA │ días restantes: {} │ costo oportunidad: ${}",
+
+            log.info("  CLAUSURA │ días restantes: {} │ ingreso potencial perdido: ${} (informativo)",
                     state.getSuspensionDaysRemaining(), (long) opp);
 
-            // Notificación de clausura al inicio del día (aparece primero en el log)
+            // Evento informativo al inicio del día: lo que se habría ganado
             state.getTodayEvents().add(DeviceEventDto.builder()
                     .seq(state.nextEventSeq())
-                    .eventType("SUSPENSION_DAY")
-                    .suspensionPenalty(opp)
-                    .suspensionDaysLeft(state.getSuspensionDaysRemaining())   // antes del decremento
+                    .eventType("OPPORTUNITY_INFO")
+                    .opportunityAmount(opp)
+                    .suspensionDaysLeft(state.getSuspensionDaysRemaining())
                     .build());
 
-            // Las estaciones trabajan para evacuar la cola
+            // Las estaciones trabajan para evacuar la cola de desguace
             double matRev = processDisassemblyQueue(state);
             state.setDailyMaterialRevenue(matRev);
             state.setTotalMaterialRevenue(state.getTotalMaterialRevenue() + matRev);
@@ -119,7 +134,6 @@ public class SimulationEngine {
             state.setDailyLaborCost(labor);
             state.setTotalLaborCost(state.getTotalLaborCost() + labor);
         } else {
-            // Fin de semana durante clausura: sin actividad ni costo
             log.info("  CLAUSURA (fin de semana) │ días restantes: {} │ sin actividad",
                     state.getSuspensionDaysRemaining());
         }
@@ -133,7 +147,6 @@ public class SimulationEngine {
             log.info("  ✔ Suspensión finalizada. Cargo logístico: ${}. Suspensiones totales: {}",
                     (long) SUSPENSION_FIXED_COST, state.getTotalSuspensions());
 
-            // Notificación del cargo logístico fijo al final del último día
             state.getTodayEvents().add(DeviceEventDto.builder()
                     .seq(state.nextEventSeq())
                     .eventType("SUSPENSION_END")
@@ -153,18 +166,10 @@ public class SimulationEngine {
         state.setTotalArrived(state.getTotalArrived() + n);
         log.info("  Llegadas: {} equipos {}", n, state.isPeakMonth() ? "[mes pico]" : "[mes normal]");
 
-        // 2. Triaje
+        // 2. Triaje con cola pendiente y tiempo exponencial por unidad
         classifyArrivals(state, n);
 
-        // 3. Chequeo de cola → posible suspensión
-        if (!state.isSuspended() && state.getDisassemblyQueue().size() >= MAX_QUEUE) {
-            state.setSuspended(true);
-            state.setSuspensionDaysRemaining(SUSPENSION_DAYS);
-            log.warn("  !! COLA SATURADA: {} ≥ {} → SUSPENSIÓN de {} días activada",
-                    state.getDisassemblyQueue().size(), MAX_QUEUE, SUSPENSION_DAYS);
-        }
-
-        // 4. Desensamblaje (siempre, incluso si acaba de activarse la suspensión)
+        // 3. Desensamblaje
         double matRev = processDisassemblyQueue(state);
         state.setDailyMaterialRevenue(matRev);
         state.setTotalMaterialRevenue(state.getTotalMaterialRevenue() + matRev);
@@ -189,18 +194,37 @@ public class SimulationEngine {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  Triaje y clasificación
+    //  Triaje y clasificación con backlog y tiempo Exp(7.5 min) por unidad
     // ─────────────────────────────────────────────────────────────────────────
 
-    private void classifyArrivals(SimulationState state, int n) {
+    private void classifyArrivals(SimulationState state, int newArrivals) {
         LcgGenerator rng = state.getRng();
-        int caseA = 0, terminal = 0, caseB = 0;
-        double caseARevenue = 0;
 
-        for (int i = 0; i < n; i++) {
+        int pendingFromYesterday = state.getTriagePendingCount();
+        int totalToClassify      = newArrivals + pendingFromYesterday;
+
+        // Capacidad de triaje: un operario de triaje × 540 min (o los configurados)
+        int    triageOps       = Math.max(1, state.getConfig().getTriageOperators());
+        double triageCapacity  = (double) triageOps * WORK_MINUTES_PER_OP_DAY;
+
+        log.info("  Triaje │ Hoy ingresaron: {} │ Pendientes de ayer: {} │ Total a clasificar: {}",
+                newArrivals, pendingFromYesterday, totalToClassify);
+
+        int    caseA      = 0;
+        int    terminal   = 0;
+        int    caseB      = 0;
+        double caseARevenue   = 0;
+        double triageTimeUsed = 0;
+        int    classified     = 0;
+
+        for (int i = 0; i < totalToClassify; i++) {
+            double triageTime = rng.nextExponential(TRIAGE_MEAN_MINUTES);
+            if (triageTimeUsed + triageTime > triageCapacity) break;
+            triageTimeUsed += triageTime;
+            classified++;
+
             double r = rng.next();
             if (r < 0.15) {
-                // Caso A: equipo funcional con antigüedad < 7 años
                 double rev = rng.nextUniform(120_000, 180_000);
                 caseARevenue += rev;
                 caseA++;
@@ -211,10 +235,8 @@ public class SimulationEngine {
                         .caseARevenue(rev)
                         .build());
             } else {
-                // 85% inoperable
                 double r2 = rng.next();
                 if (r2 < 0.10) {
-                    // 10% del inoperable → destrucción total / exposición química
                     terminal++;
                     state.getTodayEvents().add(DeviceEventDto.builder()
                             .seq(state.nextEventSeq())
@@ -222,7 +244,6 @@ public class SimulationEngine {
                             .triageResult("TERMINAL")
                             .build());
                 } else {
-                    // 90% del inoperable → Caso B: módulos internos preservados
                     Device device = generateDevice(rng);
                     state.getDisassemblyQueue().add(device);
                     caseB++;
@@ -238,6 +259,20 @@ public class SimulationEngine {
             }
         }
 
+        int leftover = totalToClassify - classified;
+        state.setTriagePendingCount(leftover);
+
+        // Evento resumen de triaje del día
+        state.getTodayEvents().add(DeviceEventDto.builder()
+                .seq(state.nextEventSeq())
+                .eventType("TRIAGE_SUMMARY")
+                .triageNewArrivals(newArrivals)
+                .triagePendingFromYesterday(pendingFromYesterday)
+                .triageTotalToClassify(totalToClassify)
+                .triageClassified(classified)
+                .triageLeftover(leftover)
+                .build());
+
         state.setDailyCaseA(caseA);
         state.setDailyTerminalWaste(terminal);
         state.setDailyCaseB(caseB);
@@ -247,8 +282,14 @@ public class SimulationEngine {
         state.setTotalCaseB(state.getTotalCaseB() + caseB);
         state.setTotalCaseARevenue(state.getTotalCaseARevenue() + caseARevenue);
 
-        log.info("  Triaje → CasoA: {} (${}). Terminal: {}. CasoB→cola: {}. Cola total: {}",
-                caseA, (long) caseARevenue, terminal, caseB, state.getDisassemblyQueue().size());
+        if (leftover > 0) {
+            log.info("  Triaje → CasoA: {} (${}). Terminal: {}. CasoB→cola: {}. Clasificados: {}/{}. ⚠ {} pendientes mañana.",
+                    caseA, (long) caseARevenue, terminal, caseB, classified, totalToClassify, leftover);
+        } else {
+            log.info("  Triaje → CasoA: {} (${}). Terminal: {}. CasoB→cola: {}. Clasificados: {}/{} ✔",
+                    caseA, (long) caseARevenue, terminal, caseB, classified, totalToClassify);
+        }
+        log.info("  Cola desguace total: {}", state.getDisassemblyQueue().size());
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -256,38 +297,46 @@ public class SimulationEngine {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Procesamiento multicanal: cada estación tiene su propio presupuesto de minutos.
-     * Si la estación 1 no puede procesar el próximo dispositivo (FIFO), la estación 2
-     * puede tomarlo con su presupuesto completo. Esto modela correctamente el modelo
-     * de colas M/G/c con disciplina FIFO y c canales en paralelo.
+     * Procesamiento multicanal con paralelismo real: todos los operarios de todas las
+     * estaciones forman un pool plano. Cada dispositivo se asigna al operario que quede
+     * libre más temprano y que aún pueda absorberlo dentro de su jornada (540 min).
+     * De este modo las N estaciones × M operarios trabajan verdaderamente en paralelo.
      */
     private double processDisassemblyQueue(SimulationState state) {
         state.getStations().forEach(StationState::resetDaily);
 
-        int    opsPerSt      = Math.max(1, state.getConfig().getOperatorsPerStation());
-        double stationCapMin = (double) opsPerSt * WORK_MINUTES_PER_OP_DAY;  // min/estación
+        int      opsPerSt  = Math.max(1, state.getConfig().getOperatorsPerStation());
+        int      totalOps  = state.getStations().size() * opsPerSt;
+        double[] opUsed    = new double[totalOps];   // minutos acumulados por operario
 
         double materialRevenue = 0;
         int    processed       = 0;
 
-        for (StationState station : state.getStations()) {
-            if (state.getDisassemblyQueue().isEmpty()) break;
+        while (!state.getDisassemblyQueue().isEmpty()) {
+            Device next     = state.getDisassemblyQueue().peek();
+            double procTime = next.getProcessingTimeMinutes();
 
-            double remaining = stationCapMin;
-
-            while (!state.getDisassemblyQueue().isEmpty()) {
-                Device next = state.getDisassemblyQueue().peek();
-                if (remaining < next.getProcessingTimeMinutes()) break;  // no cabe en esta estación
-
-                state.getDisassemblyQueue().poll();
-                remaining -= next.getProcessingTimeMinutes();
-                station.recordDeviceProcessed(next.getProcessingTimeMinutes());
-
-                double value = recoverMaterialValue(next, state);
-                materialRevenue += value;
-                processed++;
-                state.setTotalDisassembled(state.getTotalDisassembled() + 1);
+            // Operario más libre que todavía pueda absorber este dispositivo en la jornada
+            int    bestOp   = -1;
+            double bestUsed = Double.MAX_VALUE;
+            for (int i = 0; i < totalOps; i++) {
+                if (opUsed[i] + procTime <= WORK_MINUTES_PER_OP_DAY && opUsed[i] < bestUsed) {
+                    bestUsed = opUsed[i];
+                    bestOp   = i;
+                }
             }
+            if (bestOp < 0) break;   // ningún operario puede absorber el próximo dispositivo
+
+            state.getDisassemblyQueue().poll();
+            opUsed[bestOp] += procTime;
+
+            int stIdx = bestOp / opsPerSt;
+            state.getStations().get(stIdx).recordDeviceProcessed(procTime);
+
+            double value = recoverMaterialValue(next, state);
+            materialRevenue += value;
+            processed++;
+            state.setTotalDisassembled(state.getTotalDisassembled() + 1);
         }
 
         state.setDailyDisassembled(processed);
@@ -320,24 +369,24 @@ public class SimulationEngine {
 
     private DeviceType selectType(LcgGenerator rng) {
         double u = rng.next();
-        if (u < 0.30) return DeviceType.INKJET;      // 30% hogareñas livianas
-        if (u < 0.80) return DeviceType.LASER;       // 50% láser de oficina
-        return DeviceType.INDUSTRIAL;                 // 20% industriales pesadas
+        if (u < 0.30) return DeviceType.INKJET;
+        if (u < 0.80) return DeviceType.LASER;
+        return DeviceType.INDUSTRIAL;
     }
 
     private double generateWeight(DeviceType type, LcgGenerator rng) {
         return switch (type) {
-            case INKJET     -> rng.nextUniform(4,  6);   // kg
-            case LASER      -> rng.nextUniform(12, 18);  // kg
-            case INDUSTRIAL -> rng.nextUniform(45, 70);  // kg
+            case INKJET     -> rng.nextUniform(4,  6);
+            case LASER      -> rng.nextUniform(12, 18);
+            case INDUSTRIAL -> rng.nextUniform(45, 70);
         };
     }
 
     private double generateProcessingTime(DeviceType type, LcgGenerator rng) {
         return switch (type) {
-            case INKJET     -> rng.nextUniform(39, 59);           // U[39,59] min
-            case LASER      -> Math.max(30, rng.nextNormal(55, 4.5)); // N(55,4.5) min
-            case INDUSTRIAL -> rng.nextUniform(60, 83);           // U[60,83] min
+            case INKJET     -> rng.nextUniform(39, 59);
+            case LASER      -> Math.max(30, rng.nextNormal(55, 4.5));
+            case INDUSTRIAL -> rng.nextUniform(60, 83);
         };
     }
 
@@ -349,13 +398,12 @@ public class SimulationEngine {
         LcgGenerator rng    = state.getRng();
         double       weight = device.getWeightKg();
 
-        // Fracciones según el modelo verbal
         double plasticKg   = weight * rng.nextUniform(0.40, 0.50);
         double ferrousKg   = weight * rng.nextUniform(0.25, 0.30);
         double preciousKg  = weight * rng.nextUniform(0.05, 0.10);
-        double aluminumKg  = weight * 0.02;  // fijo 2%
-        double copperKg    = weight * 0.02;  // fijo 2%
-        double hazardousKg = weight * 0.05;  // fijo 5% (costo)
+        double aluminumKg  = weight * 0.02;
+        double copperKg    = weight * 0.02;
+        double hazardousKg = weight * 0.05;
 
         state.addMaterialKg("plastico",  plasticKg);
         state.addMaterialKg("ferroso",   ferrousKg);
@@ -370,7 +418,6 @@ public class SimulationEngine {
                      + copperKg    * PRICE_COBRE
                      - hazardousKg * COST_PELIGROSO;
 
-        // Evento individual para replay en el frontend
         state.getTodayEvents().add(DeviceEventDto.builder()
                 .seq(state.nextEventSeq())
                 .eventType("DESGUACE")
@@ -403,14 +450,17 @@ public class SimulationEngine {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void recalcTotals(SimulationState state) {
+        // Ingresos totales = reventa Caso A + materiales desguace
         double totalRevenue = state.getTotalCaseARevenue() + state.getTotalMaterialRevenue();
-        double totalCost    = state.getTotalLaborCost()
-                            + state.getTotalOpportunityCost()
-                            + state.getTotalLogisticCost();
+        // Costos reales = salarios + cargo logístico por suspensiones
+        // totalOpportunityCost es informativo y NO se resta
+        double totalCost = state.getTotalLaborCost() + state.getTotalLogisticCost();
         state.setTotalNetProfit(totalRevenue - totalCost);
 
+        // Net del día = ingresos del día - costos del día (salarios)
+        // dailyOpportunityInfo es informativo, NO se descuenta
         double dayRevenue = state.getDailyCaseARevenue() + state.getDailyMaterialRevenue();
-        double dayCost    = state.getDailyLaborCost() + state.getDailySuspensionCost();
+        double dayCost    = state.getDailyLaborCost();
         state.setDailyNetProfit(dayRevenue - dayCost);
     }
 
@@ -420,7 +470,7 @@ public class SimulationEngine {
 
     private void appendDailySeries(SimulationState state) {
         double dayRev  = state.getDailyCaseARevenue() + state.getDailyMaterialRevenue();
-        double dayCost = state.getDailyLaborCost() + state.getDailySuspensionCost();
+        double dayCost = state.getDailyLaborCost();  // solo salarios; oportunidad es informativa
 
         DailySeriesPointDto point = DailySeriesPointDto.builder()
                 .day(state.getCurrentDay())
@@ -492,7 +542,7 @@ public class SimulationEngine {
                 .dailyCaseARevenue(state.getDailyCaseARevenue())
                 .dailyMaterialRevenue(state.getDailyMaterialRevenue())
                 .dailyLaborCost(state.getDailyLaborCost())
-                .dailySuspensionCost(state.getDailySuspensionCost())
+                .dailyOpportunityInfo(state.getDailyOpportunityInfo())
                 .dailyNetProfit(state.getDailyNetProfit())
                 // Acumulados
                 .totalArrived(state.getTotalArrived())

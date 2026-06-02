@@ -56,23 +56,15 @@ interface Props { snapshot: PlantSnapshot }
 export function MetricsDashboard({ snapshot }: Props) {
   const visibleEvents      = useSimulationStore((s) => s.visibleEvents)
   const eventQueue         = useSimulationStore((s) => s.eventQueue)
-  const revealNext         = useSimulationStore((s) => s.revealNextEvent)
   const isRunning          = useSimulationStore((s) => s.isRunning)
-  const revealIntervalMs   = useSimulationStore((s) => s.revealIntervalMs)
-  const isPaused           = useSimulationStore((s) => s.isPaused)
+  const config             = useSimulationStore((s) => s.config)
 
-  // setInterval usa el intervalo adaptativo calculado en el store.
-  // Se detiene mientras la simulación esté pausada.
+  // Auto-scroll del log al último evento — scrollTop instantáneo sobre el contenedor,
+  // evita que las animaciones smooth se apilen a ×540 (33 ms entre eventos)
+  const logContainerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (isPaused) return
-    const id = setInterval(revealNext, revealIntervalMs)
-    return () => clearInterval(id)
-  }, [revealNext, revealIntervalMs, isPaused])
-
-  // Auto-scroll del log al último evento
-  const logEndRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = logContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [visibleEvents.length])
 
   const series = snapshot.dailySeries.slice(-60)   // últimos 60 días para el gráfico
@@ -90,7 +82,7 @@ export function MetricsDashboard({ snapshot }: Props) {
       {/* ── Fila superior: economía del día + acumulado ─────────────────── */}
       <div className="metrics-top-row">
         <EconomicsPanel snapshot={snapshot} isRunning={isRunning} />
-        <QueuePanel snapshot={snapshot} />
+        <QueuePanel snapshot={snapshot} config={config} />
         <StationsPanel snapshot={snapshot} />
       </div>
 
@@ -107,7 +99,7 @@ export function MetricsDashboard({ snapshot }: Props) {
                 : 'Esperando inicio…'}
             </span>
           </header>
-          <div className="device-log">
+          <div className="device-log" ref={logContainerRef}>
             {visibleEvents.map((ev, idx) => {
               const prevDay = idx > 0 ? visibleEvents[idx - 1].dayNumber : undefined
               const showDayHeader = ev.dayNumber != null && ev.dayNumber !== prevDay
@@ -118,7 +110,6 @@ export function MetricsDashboard({ snapshot }: Props) {
                 </Fragment>
               )
             })}
-            <div ref={logEndRef} />
           </div>
         </article>
 
@@ -213,8 +204,8 @@ function EconomicsPanel({ snapshot, isRunning }: { snapshot: PlantSnapshot; isRu
         <EconRow label="Ingresos Caso A"  value={ARS(snapshot.dailyCaseARevenue)}   color="#3aa1ff" />
         <EconRow label="Ingresos materiales" value={ARS(snapshot.dailyMaterialRevenue)} color="#f2c744" />
         <EconRow label="Costo nómina"     value={`-${ARS(snapshot.dailyLaborCost)}`}   color="#e0754a" />
-        {snapshot.dailySuspensionCost > 0 && (
-          <EconRow label="Costo clausura" value={`-${ARS(snapshot.dailySuspensionCost)}`} color="#e05050" />
+        {snapshot.dailyOpportunityInfo > 0 && (
+          <EconRow label="Ingreso potencial perdido" value={ARS(snapshot.dailyOpportunityInfo)} color="#a0a0a0" />
         )}
         <div className="econ-divider" />
         <EconRow label="Resultado neto"   value={ARS(snapshot.dailyNetProfit)}       color={netColor} bold />
@@ -223,7 +214,7 @@ function EconomicsPanel({ snapshot, isRunning }: { snapshot: PlantSnapshot; isRu
       <div className="econ-section">
         <p className="econ-section-title">Acumulado</p>
         <EconRow label="Ingresos totales" value={ARS(snapshot.totalCaseARevenue + snapshot.totalMaterialRevenue)} color="#89a8de" />
-        <EconRow label="Costos totales"   value={`-${ARS(snapshot.totalLaborCost + snapshot.totalOpportunityCost + snapshot.totalLogisticCost)}`} color="#e0754a" />
+        <EconRow label="Costos totales"   value={`-${ARS(snapshot.totalLaborCost + snapshot.totalLogisticCost)}`} color="#e0754a" />
         {snapshot.totalSuspensions > 0 && (
           <EconRow label="Suspensiones"   value={`${snapshot.totalSuspensions}x`}   color="#e05050" />
         )}
@@ -245,9 +236,17 @@ function EconRow({ label, value, color, bold }: { label: string; value: string; 
 
 // ── Panel cola ────────────────────────────────────────────────────────────────
 
-function QueuePanel({ snapshot }: { snapshot: PlantSnapshot }) {
+function QueuePanel({ snapshot, config }: { snapshot: PlantSnapshot; config: import('../../types/simulation').SimulationConfig }) {
   const pct = Math.min(100, (snapshot.queueSize / 250) * 100)
   const fillColor = pct >= 90 ? '#e05050' : pct >= 60 ? '#f2c744' : '#2ad46f'
+
+  // El queueSize incluye tanto los que esperan como los que están siendo desarmados
+  // (el evento DESGUACE llega al final del proceso, no al inicio).
+  // Estimamos cuántos están en proceso según la capacidad concurrente configurada.
+  const maxConcurrent = config.activeStations * config.operatorsPerStation
+  const inProcess     = Math.min(snapshot.queueSize, maxConcurrent)
+  const waiting       = Math.max(0, snapshot.queueSize - inProcess)
+
   return (
     <article className="metric-card queue-card">
       <header><h3>Cola de desguace</h3></header>
@@ -260,6 +259,23 @@ function QueuePanel({ snapshot }: { snapshot: PlantSnapshot }) {
           <span className="queue-limit">/ 250</span>
         </div>
       </div>
+
+      {/* Desglose: en espera vs siendo desarmados ahora */}
+      {snapshot.queueSize > 0 && (
+        <div className="queue-breakdown">
+          <div className="qb-row">
+            <span className="qb-dot qb-dot--wait" />
+            <span className="qb-label">En espera</span>
+            <strong className="qb-val">{waiting}</strong>
+          </div>
+          <div className="qb-row">
+            <span className="qb-dot qb-dot--proc" />
+            <span className="qb-label">Desarmando ahora</span>
+            <strong className="qb-val qb-val--proc">{inProcess}</strong>
+          </div>
+        </div>
+      )}
+
       {snapshot.suspended && (
         <div className="queue-suspended">
           ⚠ Clausura<br />{snapshot.suspensionDaysRemaining}d restantes
@@ -387,17 +403,18 @@ function DayHeader({ day }: { day: number }) {
 // ── Fila del log de dispositivos ──────────────────────────────────────────────
 
 function DeviceEventRow({ event }: { event: DeviceEvent }) {
-  if (event.eventType === 'ARRIVALS')       return <ArrivalsRow event={event} />
-  if (event.eventType === 'DAY_END')        return <DayEndRow event={event} />
-  if (event.eventType === 'SUSPENSION_DAY') return <SuspensionDayRow event={event} />
-  if (event.eventType === 'SUSPENSION_END') return <SuspensionEndRow event={event} />
-  if (event.eventType === 'TRIAGE')         return <TriageRow event={event} />
+  if (event.eventType === 'ARRIVALS')        return <ArrivalsRow event={event} />
+  if (event.eventType === 'DAY_END')         return <DayEndRow event={event} />
+  if (event.eventType === 'OPPORTUNITY_INFO') return <OpportunityInfoRow event={event} />
+  if (event.eventType === 'SUSPENSION_END')  return <SuspensionEndRow event={event} />
+  if (event.eventType === 'TRIAGE_SUMMARY')  return <TriageSummaryRow event={event} />
+  if (event.eventType === 'TRIAGE')          return <TriageRow event={event} />
   return <DesguaceRow event={event} />
 }
 
 function DayEndRow({ event }: { event: DeviceEvent }) {
   const tickMs  = useSimulationStore((s) => s.config.tickMs)
-  const pausing = tickMs === 1_620_000 && event.workDay !== false
+  const pausing = (tickMs === 1_620_000 || tickMs === 162_000) && event.workDay !== false
   if (event.workDay === false) return null   // días no laborables: sin banner de cierre
   return (
     <div className="day-end-row">
@@ -444,17 +461,39 @@ function ArrivalsRow({ event }: { event: DeviceEvent }) {
   )
 }
 
-function SuspensionDayRow({ event }: { event: DeviceEvent }) {
-  const daysLeft    = event.suspensionDaysLeft ?? 0
-  const dayNumber   = 8 - daysLeft   // día 1 cuando daysLeft=7, día 7 cuando daysLeft=1
+function OpportunityInfoRow({ event }: { event: DeviceEvent }) {
+  const daysLeft  = event.suspensionDaysLeft ?? 0
+  const dayNumber = 8 - daysLeft   // día 1 cuando daysLeft=7, día 7 cuando daysLeft=1
   return (
-    <div className="suspension-day-row">
-      <span className="susp-icon">⚠️</span>
+    <div className="suspension-day-row opportunity-info-row">
+      <span className="susp-icon">💡</span>
       <span className="susp-label">
-        Clausura · Día <strong>{dayNumber}</strong> de 7
+        Clausura · Día <strong>{dayNumber}</strong> de 7 — sin recepción
       </span>
-      <span className="susp-cost">
-        Costo de oportunidad: <strong>{ARS(event.suspensionPenalty ?? 0)}</strong>
+      <span className="susp-cost susp-cost--info">
+        Se podría haber ganado: <strong>{ARS(event.opportunityAmount ?? 0)}</strong>
+      </span>
+    </div>
+  )
+}
+
+function TriageSummaryRow({ event }: { event: DeviceEvent }) {
+  const leftover = event.triageLeftover ?? 0
+  return (
+    <div className="triage-summary-row">
+      <span className="ts-icon">📋</span>
+      <span className="ts-body">
+        <strong>Resumen triaje</strong>
+        {' — '}Hoy: <strong>{event.triageNewArrivals}</strong>
+        {(event.triagePendingFromYesterday ?? 0) > 0 && (
+          <> · Del día anterior: <strong>{event.triagePendingFromYesterday}</strong></>
+        )}
+        {' · '}Total: <strong>{event.triageTotalToClassify}</strong>
+        {' · '}Clasificados: <strong>{event.triageClassified}</strong>
+        {leftover > 0
+          ? <span className="ts-leftover"> · ⚠ <strong>{leftover}</strong> pasan al día siguiente</span>
+          : <span className="ts-ok"> · ✔ Cola de triaje evacuada</span>
+        }
       </span>
     </div>
   )
@@ -480,9 +519,15 @@ function TriageRow({ event }: { event: DeviceEvent }) {
     CASO_B:   { label: 'COLA ↓',   color: '#f2c744', bg: '#f2c74418' },
   }[result]!
 
+  // Solo los Caso B van a la cola de desguace y recibirán una referencia posterior
+  const isCaseB = result === 'CASO_B'
+
   return (
     <div className="dev-row triage-row" style={{ borderLeftColor: resultConfig.color }}>
-      <span className="dev-seq">#{event.seq}</span>
+      {isCaseB
+        ? <span className="dev-seq">#{event.caseBNum}</span>
+        : <span className="dev-seq dev-seq--no-ref" />
+      }
       <span className="dev-time">{simTimeStr(event.simTimeMinutes)}</span>
       <span className="dev-phase">TRIAJE</span>
       {event.deviceType ? (
@@ -515,10 +560,9 @@ function DesguaceRow({ event }: { event: DeviceEvent }) {
   const procMin   = event.processingTimeMinutes ?? 55
   const endMin    = event.simTimeMinutes
   const startMin  = endMin != null ? endMin - procMin : undefined
-
   return (
     <div className="dev-row desguace-row" style={{ borderLeftColor: '#2ad46f' }}>
-      <span className="dev-seq">#{event.seq}</span>
+      <span className="dev-seq">#{event.caseBNum}</span>
       <span className="dev-time">{simTimeStr(endMin)}</span>
       <span className="dev-phase">DESGUACE</span>
       <span className="dev-type" style={{ color: typeColor }}>
