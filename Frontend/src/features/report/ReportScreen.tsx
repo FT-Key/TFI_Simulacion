@@ -43,7 +43,7 @@ export function ReportScreen({ report, onDismiss, backLabel = '← Volver al das
           <p className="report-meta">
             {config.simulationDurationYears} {config.simulationDurationYears === 1 ? 'año' : 'años'} simulado{config.simulationDurationYears > 1 ? 's' : ''} ·{' '}
             {config.triageOperators} op. triaje · {config.activeStations} estaciones · {config.operatorsPerStation} op/est · {totalOps} operarios totales
-            {source === 'computed' && <span className="report-source-badge"> · Corrida de referencia</span>}
+            {source === 'computed' && <span className="report-source-badge"> · Corrida finalizada</span>}
           </p>
         </div>
         <button type="button" className="report-back-btn" onClick={onDismiss}>

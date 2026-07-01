@@ -104,7 +104,7 @@ function HistoryCard({
           <span className="hc-badge">{config.operatorsPerStation} op/est</span>
           <span className="hc-badge">{totalOps} operarios</span>
           {source === 'computed' && (
-            <span className="hc-badge hc-badge-computed">Corrida de referencia</span>
+            <span className="hc-badge hc-badge-computed">Corrida finalizada</span>
           )}
         </div>
 
